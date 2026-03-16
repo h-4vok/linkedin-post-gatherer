@@ -12,6 +12,13 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function stripExpandableSuffix(text) {
+  return text
+    .replace(/(?:…|\.{3})\s*more\s*$/i, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function cleanPersonLabel(text) {
   if (!text) {
     return null;
@@ -142,6 +149,17 @@ export function extractRepostMetadata(postElement) {
   };
 }
 
+export function extractPostText(postElement) {
+  const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
+
+  if (!textBox) {
+    return null;
+  }
+
+  const text = stripExpandableSuffix(textBox.textContent || "");
+  return text || null;
+}
+
 export function buildFingerprint(postElement, author) {
   const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
     0,
@@ -161,7 +179,7 @@ export function buildNormalizedItem(
     link: null,
     author,
     reposted_by: repostMetadata.reposted_by,
-    post_text: null,
+    post_text: extractPostText(postElement),
     is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),

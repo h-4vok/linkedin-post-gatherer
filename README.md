@@ -17,6 +17,7 @@ Collected post batches are scoped to the current browser tab/session. Persistent
 ## MVP Behavior
 
 - Extract `author`, `reposted_by`, `post_text`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
+- Read `post_text` from LinkedIn's preloaded expandable text box when present, without clicking `more`
 - Skip promoted posts, polls, and suggested content
 - Scroll in randomized increments between `400px` and `600px`
 - Wait randomized delays between `1.5s` and `3.5s`
