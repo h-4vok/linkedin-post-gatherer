@@ -1,0 +1,30 @@
+---
+description: Core project rules and required context for visa-scanner-agent
+alwaysApply: true
+---
+
+# Core Rules
+
+Before substantive work, read:
+
+- `ENGINEERING_PLAYBOOK.md`
+- `REPO_WORK_RULES.md`
+- `DELIVERY_CHECKLIST.md`
+
+Use these additional docs when relevant:
+
+- `REPO_BASELINE.md`
+- `README.md`
+- `CODEX_PROJECT.md`
+- `CODEX_STRUCTURE.md`
+- `DECISIONS.md`
+- `docs/diagrams/`
+
+Interpretation:
+
+- `ENGINEERING_PLAYBOOK.md` is the reusable engineering policy.
+- `REPO_WORK_RULES.md` is the repository-specific rules file.
+- `DELIVERY_CHECKLIST.md` is the minimum completion and delivery checklist.
+- `REPO_BASELINE.md` is the recommended repo setup and tooling baseline.
+
+When code changes affect runtime flow, failure handling, architecture, or extension points, update the related docs and Mermaid diagrams in the same change set.
