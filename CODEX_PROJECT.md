@@ -87,12 +87,14 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - `author`
   - `reposted_by`
   - `post_text`
+  - `posted_time`
   - `is_repost`
   - `type`
   - `extracted_at`
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.
 - `post_text` should prefer the preloaded LinkedIn expandable text node so long posts can be captured without triggering UI expansion.
+- `posted_time` should preserve LinkedIn's raw relative timestamp string when available and may safely remain `null` when the DOM does not expose it clearly.
 
 ## Testing Strategy
 

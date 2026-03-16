@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   extractAuthor,
+  extractPostedTime,
   extractPostText,
   extractRepostMetadata,
   findFeedContainer,
@@ -21,6 +22,7 @@ const FEED_FIXTURE = `
           <span class="verified"></span>
           <span class="relationship"><span> â€¢ 1st</span></span>
         </span>
+        <p>4h •</p>
         <span data-testid="expandable-text-box">
           Full organic text with a hidden ending.
           <button type="button">... more</button>
@@ -138,6 +140,14 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractPostText(posts[2])).toBeNull();
   });
 
+  it("extracts posted time when LinkedIn exposes a relative timestamp", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractPostedTime(posts[0])).toBe("4h");
+    expect(extractPostedTime(posts[2])).toBeNull();
+  });
+
   it("scans only new elements in repeated rescans", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
@@ -155,6 +165,7 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(firstPass.acceptedItems[0]).toMatchObject({
       author: "Gonzalo Corbijn",
       post_text: "Full organic text with a hidden ending.",
+      posted_time: "4h",
     });
     expect(firstPass.acceptedItems[3]).toMatchObject({
       author: "Liz Fong-Jones",

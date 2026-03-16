@@ -3,6 +3,7 @@ const FEED_SELECTOR =
 const POST_SELECTOR = 'div[role="listitem"]';
 const PROMOTED_LABELS = ["Promoted", "Publicidad"];
 const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
+const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
 
 function normalizeWhitespace(value) {
   return value.replace(/\s+/g, " ").trim();
@@ -160,6 +161,21 @@ export function extractPostText(postElement) {
   return text || null;
 }
 
+export function extractPostedTime(postElement) {
+  const paragraphs = Array.from(postElement.querySelectorAll("p"));
+
+  for (const paragraph of paragraphs) {
+    const text = normalizeWhitespace(paragraph.textContent || "");
+    const match = text.match(POSTED_TIME_PATTERN);
+
+    if (match) {
+      return match[1].toLowerCase();
+    }
+  }
+
+  return null;
+}
+
 export function buildFingerprint(postElement, author) {
   const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
     0,
@@ -180,6 +196,7 @@ export function buildNormalizedItem(
     author,
     reposted_by: repostMetadata.reposted_by,
     post_text: extractPostText(postElement),
+    posted_time: extractPostedTime(postElement),
     is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),

@@ -86,6 +86,7 @@ Recommended local order before commit:
   - `author`
   - `reposted_by`
   - `post_text`
+  - `posted_time`
   - `is_repost`
   - `type`
   - `extracted_at`

@@ -15,6 +15,7 @@ Identify and extract the following fields from each post container:
 - `author_name`: Name of the author or the person reposting.
 - `reposted_by`: Name of the reposter when LinkedIn explicitly marks the post as a repost.
 - `post_text`: Full textual content of the post.
+- `posted_time`: Relative LinkedIn post age such as `4h` or `2w` when available.
 - `link`: link to post.
 - `is_repost`: Boolean flag indicating shared content.
 - `timestamp`: Extraction date/time.
@@ -44,6 +45,7 @@ To load dynamic content and mimic human browsing:
     "author": "Author Name",
     "reposted_by": "Reposter Name",
     "post_text": "Full post text...",
+    "posted_time": "4h",
     "is_repot": false,
     "type": "organic",
     "extracted_at": "2026-03-16T20:00:00Z"
