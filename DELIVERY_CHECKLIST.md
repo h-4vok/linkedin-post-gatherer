@@ -11,6 +11,7 @@ Use this checklist before saying a task is done, before committing, and before o
 - Any new permission, host permission, or browser surface was reviewed for necessity.
 - If the change touches extraction logic, promoted posts, polls, and suggested-content exclusions were considered explicitly.
 - If the change touches UI, the popup start action, real-time counter, and export action still match the documented MVP.
+- A Windows system notification was sent with the message `Codex: Tarea completada`.
 
 ## Before Commit
 

@@ -13,6 +13,7 @@ Develop a Chrome Extension (Manifest V3) to automate the collection of raw data 
 ### A. Data Extraction (Content Script)
 Identify and extract the following fields from each post container:
 - `author_name`: Name of the author or the person reposting.
+- `reposted_by`: Name of the reposter when LinkedIn explicitly marks the post as a repost.
 - `post_text`: Full textual content of the post.
 - `link`: link to post.
 - `is_repost`: Boolean flag indicating shared content.
@@ -41,6 +42,7 @@ To load dynamic content and mimic human browsing:
   {
     "link": "urn:li:activity:123456789",
     "author": "Author Name",
+    "reposted_by": "Reposter Name",
     "post_text": "Full post text...",
     "is_repot": false,
     "type": "organic",

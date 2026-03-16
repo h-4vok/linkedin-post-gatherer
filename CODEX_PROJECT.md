@@ -85,6 +85,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 - The main extraction contract for each item is:
   - `link`
   - `author`
+  - `reposted_by`
   - `post_text`
   - `is_repost`
   - `type`

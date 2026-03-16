@@ -1,33 +1,26 @@
-import { MESSAGE_TYPES, STORAGE_KEYS } from "../../shared/constants.js";
+import { MESSAGE_TYPES } from "../../shared/constants.js";
 import "./style.css";
 
 const countElement = document.querySelector("#count");
+const repostCountElement = document.querySelector("#repost-count");
 const statusElement = document.querySelector("#status");
 const exportButton = document.querySelector("#export-button");
 const exportFeedback = document.querySelector("#export-feedback");
+let activeTabId = null;
 
 void hydratePopup();
-
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local") {
-    return;
-  }
-
-  if (changes[STORAGE_KEYS.count]) {
-    renderCount(changes[STORAGE_KEYS.count].newValue || 0);
-  }
-
-  if (changes[STORAGE_KEYS.status]) {
-    renderStatus(changes[STORAGE_KEYS.status].newValue || "Idle");
-  }
-});
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== MESSAGE_TYPES.countUpdated) {
     return;
   }
 
+  if (message.tabId !== activeTabId) {
+    return;
+  }
+
   renderCount(message.count || 0);
+  renderRepostCount(message.repostCount || 0);
   renderStatus(message.status || "Idle");
 });
 
@@ -38,6 +31,7 @@ exportButton?.addEventListener("click", async () => {
   try {
     const response = await chrome.runtime.sendMessage({
       type: MESSAGE_TYPES.exportRequest,
+      tabId: activeTabId,
     });
 
     if (!response?.ok) {
@@ -53,17 +47,32 @@ exportButton?.addEventListener("click", async () => {
 });
 
 async function hydratePopup() {
-  const stored = await chrome.storage.local.get([
-    STORAGE_KEYS.count,
-    STORAGE_KEYS.status,
-  ]);
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  activeTabId = tab?.id ?? null;
 
-  renderCount(stored[STORAGE_KEYS.count] || 0);
-  renderStatus(stored[STORAGE_KEYS.status] || "Waiting for LinkedIn feed...");
+  if (activeTabId == null) {
+    renderCount(0);
+    renderStatus("No active browser tab.");
+    exportButton.disabled = true;
+    return;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: MESSAGE_TYPES.getState,
+    tabId: activeTabId,
+  });
+
+  renderCount(response?.state?.count || 0);
+  renderRepostCount(response?.state?.repostCount || 0);
+  renderStatus(response?.state?.status || "Waiting for LinkedIn feed...");
 }
 
 function renderCount(count) {
   countElement.textContent = `Posts identified: ${count} / live`;
+}
+
+function renderRepostCount(repostCount) {
+  repostCountElement.textContent = `Reposts identified: ${repostCount}`;
 }
 
 function renderStatus(status) {

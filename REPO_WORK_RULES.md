@@ -72,7 +72,7 @@ Recommended local order before commit:
 
 ## Storage And Messaging Rules
 
-- Persist only the minimum local state required for in-progress collection, popup status, and final export.
+- Persist only the minimum local state required for the active tab/session collection flow, and reserve durable local storage for lightweight UI preferences.
 - Keep a documented message contract between content scripts, background, and optional UI surfaces.
 - Do not couple storage shape to raw DOM fragments when a normalized intermediate structure can be stored instead.
 - Make it easy to clear or regenerate local run data during development and debugging.
@@ -84,6 +84,7 @@ Recommended local order before commit:
 - Each exported item should preserve the normalized MVP contract:
   - `link`
   - `author`
+  - `reposted_by`
   - `post_text`
   - `is_repost`
   - `type`
@@ -97,6 +98,10 @@ Recommended local order before commit:
 - Update affected diagram docs in the same PR when permissions, message flow, context boundaries, or collection behavior changes.
 - Keep `README.md` lightweight and use it as a navigation hub to deeper docs.
 - Keep material decisions in `DECISIONS.md` when they affect behavior, permissions, or contract stability.
+
+## Completion Notification Rule
+
+- When a task is completed, send a Windows system notification with the exact message `Codex: Tarea completada`.
 
 ## Repo Conventions Worth Preserving
 

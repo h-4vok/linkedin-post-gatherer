@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   extractAuthor,
+  extractRepostMetadata,
   findFeedContainer,
   findPostElements,
   isPromotedPost,
@@ -17,7 +18,7 @@ const FEED_FIXTURE = `
         <span aria-hidden="true">
           Gonzalo Corbijn
           <span class="verified"></span>
-          <span class="relationship"><span> • 1st</span></span>
+          <span class="relationship"><span> â€¢ 1st</span></span>
         </span>
       </div>
     </div>
@@ -26,7 +27,7 @@ const FEED_FIXTURE = `
         <p>Promoted by Acme</p>
         <span aria-hidden="true">
           Should Be Ignored
-          <span class="relationship"><span> • 2nd</span></span>
+          <span class="relationship"><span> â€¢ 2nd</span></span>
         </span>
       </div>
     </div>
@@ -35,7 +36,7 @@ const FEED_FIXTURE = `
         <p>Another organic post</p>
         <span aria-hidden="true">
           Ada Lovelace
-          <span class="relationship"><span> • 3rd+</span></span>
+          <span class="relationship"><span> â€¢ 3rd+</span></span>
         </span>
       </div>
     </div>
@@ -53,6 +54,27 @@ const FEED_FIXTURE = `
         </span>
       </div>
     </div>
+    <div role="listitem" data-post-id="repost-post">
+      <div>
+        <p>Charity Majors reposted this</p>
+      </div>
+      <div>
+        <span aria-hidden="true">
+          Liz Fong-Jones
+          <span class="relationship"><span> â€¢ 3rd+</span></span>
+        </span>
+      </div>
+    </div>
+    <div role="listitem" data-post-id="support-post">
+      <div>
+        <p>Gabriel Millien supports this</p>
+      </div>
+      <div>
+        <span aria-hidden="true">
+          Cruz Gamboa Premium Profile 3rd+
+        </span>
+      </div>
+    </div>
   </div>
 `;
 
@@ -66,7 +88,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const container = findFeedContainer(document);
 
     expect(container).not.toBeNull();
-    expect(findPostElements(container)).toHaveLength(5);
+    expect(findPostElements(container)).toHaveLength(7);
   });
 
   it("filters promoted content", () => {
@@ -84,6 +106,21 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[0])).toBe("Gonzalo Corbijn");
     expect(extractAuthor(posts[2])).toBe("Ada Lovelace");
     expect(extractAuthor(posts[4])).toBe("Kelsey Hightower");
+    expect(extractAuthor(posts[6])).toBe("Cruz Gamboa");
+  });
+
+  it("detects repost metadata without misclassifying social suggestions", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractRepostMetadata(posts[5])).toEqual({
+      is_repost: true,
+      reposted_by: "Charity Majors",
+    });
+    expect(extractRepostMetadata(posts[6])).toEqual({
+      is_repost: false,
+      reposted_by: null,
+    });
   });
 
   it("scans only new elements in repeated rescans", () => {
@@ -97,9 +134,19 @@ describe("LinkedIn feed smoke extraction", () => {
     });
     const secondPass = scanFeedPosts(container, { processedElements });
 
-    expect(firstPass.acceptedItems).toHaveLength(3);
+    expect(firstPass.acceptedItems).toHaveLength(5);
     expect(firstPass.skippedItems).toContain("promoted");
     expect(firstPass.skippedItems).toContain("missing-author");
+    expect(firstPass.acceptedItems[3]).toMatchObject({
+      author: "Liz Fong-Jones",
+      is_repost: true,
+      reposted_by: "Charity Majors",
+    });
+    expect(firstPass.acceptedItems[4]).toMatchObject({
+      author: "Cruz Gamboa",
+      is_repost: false,
+      reposted_by: null,
+    });
     expect(secondPass.acceptedItems).toHaveLength(0);
   });
 
@@ -111,10 +158,10 @@ describe("LinkedIn feed smoke extraction", () => {
       nowFactory: () => new Date("2026-03-16T20:00:00.000Z"),
     });
 
-    const firstMerge = mergeNewItems(acceptedItems);
-    const secondMerge = mergeNewItems(acceptedItems);
+    const firstMerge = mergeNewItems(101, acceptedItems);
+    const secondMerge = mergeNewItems(101, acceptedItems);
 
-    expect(firstMerge.addedCount).toBe(3);
+    expect(firstMerge.addedCount).toBe(5);
     expect(secondMerge.addedCount).toBe(0);
   });
 });
