@@ -9,12 +9,15 @@ export const STORAGE_KEYS = {
   count: "collector.count",
   status: "collector.status",
   lastExportAt: "collector.lastExportAt",
+  panelPosition: "collector.panel.position",
+  panelMinimized: "collector.panel.minimized",
 };
 
 export const MESSAGE_TYPES = {
   feedReady: "collector/feed-ready",
   newItems: "collector/new-items",
   countUpdated: "collector/count-updated",
+  getState: "collector/get-state",
   exportRequest: "collector/export-request",
   exportResult: "collector/export-result",
 };

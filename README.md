@@ -10,11 +10,13 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - UI: popup with start button, live counter, and export action
 - Product mode: local collection and local export only
 
-This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on LinkedIn home-feed collection, noise filtering, human-like scrolling, `chrome.storage.local` state, and final export. It does not send emails, post comments, or sync to external APIs.
+This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on LinkedIn home-feed collection, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
+
+Collected post batches are scoped to the current browser tab/session. Persistent local storage is reserved for lightweight UI preferences such as the floating panel position.
 
 ## MVP Behavior
 
-- Extract `author`, `post_text`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
+- Extract `author`, `reposted_by`, `post_text`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
 - Skip promoted posts, polls, and suggested content
 - Scroll in randomized increments between `400px` and `600px`
 - Wait randomized delays between `1.5s` and `3.5s`

@@ -12,6 +12,23 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function cleanPersonLabel(text) {
+  if (!text) {
+    return null;
+  }
+
+  let cleaned = normalizeWhitespace(text);
+  cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
+  cleaned = cleaned.replace(/\bPremium\b/gi, " ");
+  cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
+  cleaned = cleaned.replace(/[•·]+/g, " ");
+  cleaned = cleaned.replace(/â€¢|Â·/g, " ");
+  cleaned = cleaned.replace(/\s+[•·]+\s*$/g, " ");
+  cleaned = normalizeWhitespace(cleaned);
+
+  return cleaned || null;
+}
+
 export function findFeedContainer(root = document) {
   return root.querySelector(FEED_SELECTOR);
 }
@@ -92,12 +109,37 @@ function removeRelationshipMarker(text) {
     return null;
   }
 
-  cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
-  cleaned = cleaned.replace(/\bPremium\b/gi, " ");
-  cleaned = cleaned.replace(/[•·-]+/g, " ");
-  cleaned = normalizeWhitespace(cleaned);
+  return cleanPersonLabel(cleaned);
+}
 
-  return cleaned || null;
+export function extractRepostMetadata(postElement) {
+  const paragraphs = Array.from(postElement.querySelectorAll("p"));
+
+  for (const paragraph of paragraphs) {
+    const text = normalizeWhitespace(paragraph.textContent || "");
+    const repostMatch = text.match(/^(.*?)\s+reposted this$/i);
+
+    if (repostMatch) {
+      return {
+        is_repost: true,
+        reposted_by: cleanPersonLabel(repostMatch[1]),
+      };
+    }
+
+    if (
+      /^(.*?)\s+(loves this|supports this|found this insightful)$/i.test(text)
+    ) {
+      return {
+        is_repost: false,
+        reposted_by: null,
+      };
+    }
+  }
+
+  return {
+    is_repost: false,
+    reposted_by: null,
+  };
 }
 
 export function buildFingerprint(postElement, author) {
@@ -109,12 +151,18 @@ export function buildFingerprint(postElement, author) {
   return `${author.toLowerCase()}::${visibleText.toLowerCase()}`;
 }
 
-export function buildNormalizedItem(postElement, author, now = new Date()) {
+export function buildNormalizedItem(
+  postElement,
+  author,
+  repostMetadata,
+  now = new Date(),
+) {
   return {
     link: null,
     author,
+    reposted_by: repostMetadata.reposted_by,
     post_text: null,
-    is_repost: null,
+    is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),
     fingerprint: buildFingerprint(postElement, author),
@@ -132,9 +180,11 @@ export function analyzePostElement(postElement, now = new Date()) {
     return { status: "skipped", reason: "missing-author" };
   }
 
+  const repostMetadata = extractRepostMetadata(postElement);
+
   return {
     status: "accepted",
-    item: buildNormalizedItem(postElement, author, now),
+    item: buildNormalizedItem(postElement, author, repostMetadata, now),
   };
 }
 
