@@ -7,19 +7,45 @@
   const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
   const PANEL_ROOT_ID = "linkedin-intelligence-harvester-root";
   const DEFAULT_PANEL_POSITION = { top: 96, right: 24 };
+  const TARGET_COUNT_DEFAULT = 50;
+  const TARGET_COUNT_MIN = 1;
+  const TARGET_COUNT_MAX = 200;
+  const RUN_STATES = {
+    idle: "idle",
+    running: "running",
+    stopping: "stopping",
+    stopped: "stopped",
+    completed: "completed",
+    unavailable: "unavailable",
+  };
+  const SCROLL_STEP_MIN = 400;
+  const SCROLL_STEP_MAX = 600;
+  const SCROLL_DELAY_MIN_MS = 1500;
+  const SCROLL_DELAY_MAX_MS = 3500;
+  const LONG_WAIT_MS = 300000;
 
   const MESSAGE_TYPES = {
     feedReady: "collector/feed-ready",
     newItems: "collector/new-items",
     countUpdated: "collector/count-updated",
     getState: "collector/get-state",
+    setTargetRequest: "collector/set-target-request",
+    startRequest: "collector/start-request",
+    stopRequest: "collector/stop-request",
+    crawlerCommand: "collector/crawler-command",
+    crawlerProgress: "collector/crawler-progress",
+    log: "collector/log",
     exportRequest: "collector/export-request",
   };
 
   const STATUS_TEXT = {
     idle: "Waiting for LinkedIn feed...",
-    attached: "Collector attached to LinkedIn feed.",
-    scanning: "Collector attached and scanning new posts.",
+    attached: "Ready to collect.",
+    scanning: "Scrolling and collecting posts.",
+    stopping: "Stopping crawler.",
+    stopped: "Stopped by user.",
+    completed: "Target reached.",
+    stalled: "Feed exhausted or stalled.",
     unavailable: "LinkedIn feed container not found on this view.",
   };
 
@@ -28,21 +54,27 @@
     panelMinimized: "collector.panel.minimized",
   };
 
-  const processedElements = new WeakSet();
+  const processedElements = new WeakMap();
   const uiState = {
     count: 0,
     repostCount: 0,
     status: STATUS_TEXT.idle,
+    runState: RUN_STATES.idle,
+    targetCount: TARGET_COUNT_DEFAULT,
+    noProgressCycles: 0,
+    stalledWaitCount: 0,
     panelPosition: { ...DEFAULT_PANEL_POSITION },
     panelMinimized: false,
     feedVisible: false,
   };
 
-  let feedObserver = null;
   let rootObserver = null;
-  let pendingScan = false;
   let panel = null;
   let dragState = null;
+  let crawlRunId = 0;
+  let crawlShouldStop = false;
+  let activeFeedContainer = null;
+  let extensionContextAvailable = true;
 
   void bootstrapCollector();
 
@@ -69,11 +101,11 @@
 
   async function hydrateUiState() {
     const [stored, response] = await Promise.all([
-      chrome.storage.local.get([
+      safeStorageLocalGet([
         STORAGE_KEYS.panelPosition,
         STORAGE_KEYS.panelMinimized,
       ]),
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: MESSAGE_TYPES.getState,
       }),
     ]);
@@ -81,6 +113,9 @@
     uiState.count = response?.state?.count || 0;
     uiState.repostCount = response?.state?.repostCount || 0;
     uiState.status = response?.state?.status || STATUS_TEXT.idle;
+    uiState.runState = response?.state?.runState || RUN_STATES.idle;
+    uiState.targetCount = clampTargetCount(response?.state?.targetCount);
+    uiState.noProgressCycles = response?.state?.noProgressCycles || 0;
     uiState.panelPosition = clampPanelPosition(
       stored[STORAGE_KEYS.panelPosition] || DEFAULT_PANEL_POSITION,
       { minimized: stored[STORAGE_KEYS.panelMinimized] || false },
@@ -110,14 +145,30 @@
   }
 
   function handleRuntimeMessage(message) {
-    if (message?.type !== MESSAGE_TYPES.countUpdated) {
+    if (message?.type === MESSAGE_TYPES.countUpdated) {
+      uiState.count = message.count || 0;
+      uiState.repostCount = message.repostCount || 0;
+      uiState.status = message.status || STATUS_TEXT.idle;
+      uiState.runState = message.runState || RUN_STATES.idle;
+      uiState.targetCount = clampTargetCount(message.targetCount);
+      uiState.noProgressCycles = message.noProgressCycles || 0;
+      uiState.stalledWaitCount = message.stalledWaitCount || 0;
+      renderPanel();
       return;
     }
 
-    uiState.count = message.count || 0;
-    uiState.repostCount = message.repostCount || 0;
-    uiState.status = message.status || STATUS_TEXT.idle;
-    renderPanel();
+    if (message?.type !== MESSAGE_TYPES.crawlerCommand) {
+      return;
+    }
+
+    if (message.action === "start") {
+      void startCrawlerLoop(message.targetCount);
+      return;
+    }
+
+    if (message.action === "stop") {
+      crawlShouldStop = true;
+    }
   }
 
   function handleViewportResize() {
@@ -126,6 +177,217 @@
     });
     applyPanelPosition();
     void persistPanelPreferences();
+  }
+
+  function clampTargetCount(value) {
+    const parsed = Number.parseInt(value, 10);
+
+    if (!Number.isFinite(parsed)) {
+      return TARGET_COUNT_DEFAULT;
+    }
+
+    return Math.min(TARGET_COUNT_MAX, Math.max(TARGET_COUNT_MIN, parsed));
+  }
+
+  function randomBetween(min, max) {
+    return Math.floor(min + Math.random() * (max - min + 1));
+  }
+
+  function sleep(durationMs) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, durationMs);
+    });
+  }
+
+  function isScrollableElement(element) {
+    if (!element || element === document.body || element === document.documentElement) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(element);
+    const overflowY = style.overflowY || "";
+
+    return (
+      /(auto|scroll|overlay)/i.test(overflowY) &&
+      element.scrollHeight > element.clientHeight + 8
+    );
+  }
+
+  function describeScrollContainer(element) {
+    if (!element) {
+      return "none";
+    }
+
+    if (
+      element === document.scrollingElement ||
+      element === document.documentElement ||
+      element === document.body
+    ) {
+      return "document";
+    }
+
+    const tagName = (element.tagName || "unknown").toLowerCase();
+    const idPart = element.id ? "#" + element.id : "";
+    const classPart =
+      typeof element.className === "string" && element.className.trim()
+        ? "." + element.className.trim().split(/\s+/).slice(0, 2).join(".")
+        : "";
+
+    return tagName + idPart + classPart;
+  }
+
+  function findScrollableContainer(feedContainer) {
+    let current = feedContainer;
+
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (isScrollableElement(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return document.scrollingElement || document.documentElement || document.body;
+  }
+
+  function performScrollStep(feedContainer, scrollStep) {
+    const scrollingElement = findScrollableContainer(feedContainer);
+    const usesDocumentScroll =
+      scrollingElement === document.scrollingElement ||
+      scrollingElement === document.documentElement ||
+      scrollingElement === document.body;
+    const beforeTop = usesDocumentScroll
+      ? window.scrollY || scrollingElement.scrollTop || 0
+      : scrollingElement.scrollTop || 0;
+    const nextTop = beforeTop + scrollStep;
+
+    if (usesDocumentScroll) {
+      try {
+        scrollingElement.scrollTo({
+          top: nextTop,
+          behavior: "auto",
+        });
+      } catch {
+        scrollingElement.scrollTop = nextTop;
+      }
+
+      try {
+        window.scrollTo({
+          top: nextTop,
+          behavior: "auto",
+        });
+      } catch {
+        window.scrollTo(0, nextTop);
+      }
+    } else {
+      try {
+        scrollingElement.scrollTo({
+          top: nextTop,
+          behavior: "auto",
+        });
+      } catch {
+        scrollingElement.scrollTop = nextTop;
+      }
+    }
+
+    const afterTop = usesDocumentScroll
+      ? window.scrollY || scrollingElement.scrollTop || 0
+      : scrollingElement.scrollTop || 0;
+
+    return {
+      beforeTop,
+      afterTop,
+      moved: afterTop !== beforeTop,
+      container: describeScrollContainer(scrollingElement),
+      usesDocumentScroll,
+    };
+  }
+
+  function isExtensionContextAvailable() {
+    if (!extensionContextAvailable) {
+      return false;
+    }
+
+    try {
+      return Boolean(chrome?.runtime?.id);
+    } catch {
+      extensionContextAvailable = false;
+      return false;
+    }
+  }
+
+  function handleExtensionContextError(error) {
+    if (
+      error &&
+      typeof error.message === "string" &&
+      error.message.includes("Extension context invalidated")
+    ) {
+      extensionContextAvailable = false;
+      rootObserver?.disconnect();
+      activeFeedContainer = null;
+      crawlShouldStop = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  async function safeSendMessage(message) {
+    if (!isExtensionContextAvailable()) {
+      return null;
+    }
+
+    try {
+      return await chrome.runtime.sendMessage(message);
+    } catch (error) {
+      if (handleExtensionContextError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async function safeStorageLocalGet(keys) {
+    if (!isExtensionContextAvailable()) {
+      return {};
+    }
+
+    try {
+      return await chrome.storage.local.get(keys);
+    } catch (error) {
+      if (handleExtensionContextError(error)) {
+        return {};
+      }
+
+      throw error;
+    }
+  }
+
+  async function safeStorageLocalSet(payload) {
+    if (!isExtensionContextAvailable()) {
+      return;
+    }
+
+    try {
+      await chrome.storage.local.set(payload);
+    } catch (error) {
+      if (!handleExtensionContextError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  function logPage(event, payload) {
+    console.log("[harvester]", event, payload || {});
+  }
+
+  function logToServiceWorker(event, payload) {
+    return safeSendMessage({
+      type: MESSAGE_TYPES.log,
+      event: event,
+      payload: payload || null,
+    });
   }
 
   function normalizeWhitespace(value) {
@@ -334,11 +596,15 @@
     const skippedItems = [];
 
     for (const postElement of findPostElements(feedContainer)) {
-      if (processedElements.has(postElement)) {
+      const currentElementSignature = normalizeWhitespace(
+        postElement.textContent || "",
+      ).slice(0, 240);
+
+      if (processedElements.get(postElement) === currentElementSignature) {
         continue;
       }
 
-      processedElements.add(postElement);
+      processedElements.set(postElement, currentElementSignature);
 
       if (isPromotedPost(postElement)) {
         skippedItems.push("promoted");
@@ -366,73 +632,54 @@
     const feedContainer = findFeedContainer(document);
 
     if (!feedContainer) {
+      const shouldNotifyUnavailable =
+        uiState.feedVisible || uiState.runState !== RUN_STATES.unavailable;
+
+      activeFeedContainer = null;
       uiState.feedVisible = false;
       uiState.status = STATUS_TEXT.unavailable;
+      uiState.runState = RUN_STATES.unavailable;
       renderPanel();
-      console.log("[harvester] feed container not found yet");
-      chrome.runtime.sendMessage({
-        type: MESSAGE_TYPES.feedReady,
-        feedFound: false,
-      });
-      chrome.storage.local.set({
-        [STORAGE_KEYS.status]: STATUS_TEXT.unavailable,
-      });
+      if (shouldNotifyUnavailable) {
+        logPage("feed container not found yet");
+        void safeSendMessage({
+          type: MESSAGE_TYPES.feedReady,
+          feedFound: false,
+        });
+      }
       return;
     }
+
+    if (activeFeedContainer === feedContainer && uiState.feedVisible) {
+      return;
+    }
+
+    activeFeedContainer = feedContainer;
 
     uiState.feedVisible = true;
     renderPanel();
 
-    if (feedObserver && feedObserver.feedContainer === feedContainer) {
-      return;
-    }
-
-    if (feedObserver) {
-      feedObserver.disconnect();
-    }
-
-    feedObserver = new MutationObserver(function () {
-      scheduleScan(feedContainer);
-    });
-    feedObserver.feedContainer = feedContainer;
-    feedObserver.observe(feedContainer, {
-      childList: true,
-      subtree: true,
-    });
-
-    console.log("[harvester] feed container attached", {
+    logPage("feed container attached", {
       listItemsInView: findPostElements(feedContainer).length,
     });
 
-    chrome.runtime.sendMessage({
+    void safeSendMessage({
       type: MESSAGE_TYPES.feedReady,
       feedFound: true,
     });
-    chrome.storage.local.set({
-      [STORAGE_KEYS.status]: STATUS_TEXT.attached,
-    });
-
-    scheduleScan(feedContainer);
   }
 
-  function scheduleScan(feedContainer) {
-    if (pendingScan) {
-      return;
-    }
-
-    pendingScan = true;
-
-    queueMicrotask(function () {
-      pendingScan = false;
-      runScan(feedContainer);
-    });
-  }
-
-  function runScan(feedContainer) {
+  async function runScan(feedContainer) {
     const totalListItems = findPostElements(feedContainer).length;
     const scanResult = scanFeedPosts(feedContainer);
 
-    console.log("[harvester] scan complete", {
+    logPage("scan complete", {
+      totalListItems: totalListItems,
+      accepted: scanResult.acceptedItems.length,
+      skipped: scanResult.skippedItems.length,
+    });
+
+    await logToServiceWorker("scan-results", {
       totalListItems: totalListItems,
       accepted: scanResult.acceptedItems.length,
       skipped: scanResult.skippedItems.length,
@@ -441,23 +688,136 @@
     for (const item of scanResult.acceptedItems) {
       const loggable = Object.assign({}, item);
       delete loggable.fingerprint;
-      console.log("[harvester] item found", loggable);
+      logPage("item found", loggable);
     }
 
     for (const reason of scanResult.skippedItems) {
       if (reason === "missing-author") {
-        console.log("[harvester] skipped item", { reason: reason });
+        logPage("skipped item", { reason: reason });
       }
     }
 
-    if (!scanResult.acceptedItems.length) {
+    let addedCount = 0;
+
+    if (scanResult.acceptedItems.length) {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.newItems,
+        items: scanResult.acceptedItems,
+      });
+
+      addedCount = response?.addedCount || 0;
+    }
+
+    return safeSendMessage({
+      type: MESSAGE_TYPES.crawlerProgress,
+      addedCount: addedCount,
+      totalListItems: totalListItems,
+    });
+  }
+
+  async function startCrawlerLoop(targetCount) {
+    const requestedTarget = clampTargetCount(targetCount);
+    const feedContainer = findFeedContainer(document);
+
+    if (!feedContainer) {
+      uiState.feedVisible = false;
+      uiState.runState = RUN_STATES.unavailable;
+      uiState.status = STATUS_TEXT.unavailable;
+      renderPanel();
+      await logToServiceWorker("crawler-start-blocked", {
+        reason: "feed-unavailable",
+      });
+      await safeSendMessage({
+        type: MESSAGE_TYPES.crawlerProgress,
+        phase: "stopped",
+        reason: "unavailable",
+      });
       return;
     }
 
-    chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.newItems,
-      items: scanResult.acceptedItems,
+    crawlRunId += 1;
+    crawlShouldStop = false;
+    const activeRunId = crawlRunId;
+
+    await logToServiceWorker("crawler-started", {
+      targetCount: requestedTarget,
     });
+
+    while (activeRunId === crawlRunId && !crawlShouldStop) {
+      const currentFeedContainer = findFeedContainer(document);
+
+      if (!currentFeedContainer) {
+        await logToServiceWorker("crawler-stopped", {
+          reason: "feed-unavailable",
+        });
+        await safeSendMessage({
+          type: MESSAGE_TYPES.feedReady,
+          feedFound: false,
+        });
+        await safeSendMessage({
+          type: MESSAGE_TYPES.crawlerProgress,
+          phase: "stopped",
+          reason: "unavailable",
+        });
+        return;
+      }
+
+      await logToServiceWorker("scan-cycle-started", {
+        runId: activeRunId,
+        targetCount: requestedTarget,
+        currentCount: uiState.count,
+      });
+
+      const progressResponse = await runScan(currentFeedContainer);
+
+      if (progressResponse?.shouldStop) {
+        await logToServiceWorker("crawler-stop-condition", {
+          reason: progressResponse.stopReason,
+          count: progressResponse.state?.count || uiState.count,
+        });
+        break;
+      }
+
+      const scrollStep = randomBetween(SCROLL_STEP_MIN, SCROLL_STEP_MAX);
+      const scrollResult = performScrollStep(currentFeedContainer, scrollStep);
+      await logToServiceWorker("scroll-applied", {
+        scrollStep: scrollStep,
+        beforeTop: scrollResult.beforeTop,
+        afterTop: scrollResult.afterTop,
+        moved: scrollResult.moved,
+        container: scrollResult.container,
+        usesDocumentScroll: scrollResult.usesDocumentScroll,
+      });
+
+      const waitMs = randomBetween(SCROLL_DELAY_MIN_MS, SCROLL_DELAY_MAX_MS);
+      const effectiveWaitMs = progressResponse?.shouldLongWait
+        ? progressResponse.longWaitMs || LONG_WAIT_MS
+        : waitMs;
+
+      if (progressResponse?.shouldLongWait) {
+        await logToServiceWorker("long-wait-scheduled", {
+          waitMs: effectiveWaitMs,
+          stalledWaitCount: uiState.stalledWaitCount,
+        });
+      } else {
+        await logToServiceWorker("wait-scheduled", {
+          waitMs: effectiveWaitMs,
+        });
+      }
+
+      await sleep(effectiveWaitMs);
+    }
+
+    if (crawlShouldStop) {
+      await logToServiceWorker("crawler-stop-condition", {
+        reason: "user",
+      });
+      await safeSendMessage({
+        type: MESSAGE_TYPES.crawlerProgress,
+        phase: "stopped",
+        reason: "user",
+      });
+    }
   }
 
   function mountPanel() {
@@ -551,8 +911,41 @@
           padding: 0 16px 16px;
         }
 
+        .harvester-target-row,
+        .harvester-actions {
+          display: grid;
+          gap: 8px;
+        }
+
+        .harvester-target-row {
+          grid-template-columns: 1fr 96px;
+          align-items: end;
+        }
+
+        .harvester-label {
+          display: grid;
+          gap: 4px;
+          margin: 0;
+          color: #43576b;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .harvester-target {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid rgba(24, 34, 45, 0.18);
+          border-radius: 12px;
+          padding: 10px 12px;
+          background: #fffdfa;
+          color: #18222d;
+          font-size: 14px;
+          font-weight: 700;
+        }
+
         .harvester-status,
         .harvester-count,
+        .harvester-reposts,
         .harvester-feedback,
         .harvester-chip {
           margin: 0;
@@ -568,20 +961,33 @@
           font-weight: 800;
         }
 
-        .harvester-export {
+        .harvester-button {
           border: 0;
           border-radius: 999px;
           padding: 12px 14px;
-          background: #0a66c2;
-          color: #ffffff;
           cursor: pointer;
           font-size: 14px;
           font-weight: 800;
         }
 
-        .harvester-export:disabled {
+        .harvester-start {
+          background: #0a66c2;
+          color: #ffffff;
+        }
+
+        .harvester-stop {
+          background: rgba(24, 34, 45, 0.12);
+          color: #18222d;
+        }
+
+        .harvester-export {
+          background: #0a66c2;
+          color: #ffffff;
+        }
+
+        .harvester-button:disabled {
           opacity: 0.6;
-          cursor: wait;
+          cursor: not-allowed;
         }
 
         .harvester-feedback {
@@ -635,9 +1041,19 @@
         </header>
         <div class="harvester-body">
           <p class="harvester-status">Waiting for LinkedIn feed...</p>
-          <p class="harvester-count">Posts identified: 0 / live</p>
+          <div class="harvester-target-row">
+            <label class="harvester-label">
+              Target posts
+              <input class="harvester-target" type="number" min="1" max="200" value="50" />
+            </label>
+            <button class="harvester-button harvester-start" type="button">Start</button>
+          </div>
+          <div class="harvester-actions">
+            <button class="harvester-button harvester-stop" type="button">Stop</button>
+            <button class="harvester-button harvester-export" type="button">Export JSON</button>
+          </div>
+          <p class="harvester-count">Posts identified: 0 / 50</p>
           <p class="harvester-reposts">Reposts identified: 0</p>
-          <button class="harvester-export" type="button">Export JSON</button>
           <p class="harvester-feedback" aria-live="polite"></p>
         </div>
         <button class="harvester-chip" type="button" hidden>
@@ -655,6 +1071,9 @@
       header: shadowRoot.querySelector(".harvester-header"),
       minimizeButton: shadowRoot.querySelector(".harvester-minimize"),
       status: shadowRoot.querySelector(".harvester-status"),
+      targetInput: shadowRoot.querySelector(".harvester-target"),
+      startButton: shadowRoot.querySelector(".harvester-start"),
+      stopButton: shadowRoot.querySelector(".harvester-stop"),
       count: shadowRoot.querySelector(".harvester-count"),
       reposts: shadowRoot.querySelector(".harvester-reposts"),
       exportButton: shadowRoot.querySelector(".harvester-export"),
@@ -667,6 +1086,15 @@
     panel.minimizeButton.addEventListener("click", function (event) {
       event.stopPropagation();
       void setPanelMinimized(true);
+    });
+    panel.targetInput.addEventListener("change", function (event) {
+      void syncTargetCount(event.target.value);
+    });
+    panel.startButton.addEventListener("click", function () {
+      void startCollection();
+    });
+    panel.stopButton.addEventListener("click", function () {
+      void stopCollection();
     });
     panel.chip.addEventListener("click", function () {
       void setPanelMinimized(false);
@@ -687,9 +1115,20 @@
     panel.host.style.display = uiState.feedVisible ? "block" : "none";
     panel.shell.dataset.state = uiState.panelMinimized ? "minimized" : "expanded";
     panel.status.textContent = uiState.status;
-    panel.count.textContent = "Posts identified: " + uiState.count + " / live";
-    panel.reposts.textContent =
-      "Reposts identified: " + uiState.repostCount;
+    panel.targetInput.value = String(uiState.targetCount);
+    panel.targetInput.disabled =
+      uiState.runState === RUN_STATES.running ||
+      uiState.runState === RUN_STATES.stopping;
+    panel.startButton.disabled =
+      uiState.runState === RUN_STATES.running ||
+      uiState.runState === RUN_STATES.stopping ||
+      uiState.runState === RUN_STATES.unavailable;
+    panel.stopButton.disabled =
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping;
+    panel.count.textContent =
+      "Posts identified: " + uiState.count + " / " + uiState.targetCount;
+    panel.reposts.textContent = "Reposts identified: " + uiState.repostCount;
     panel.chipCount.textContent = String(uiState.count);
     panel.chip.hidden = !uiState.panelMinimized;
     applyPanelPosition();
@@ -706,7 +1145,7 @@
   }
 
   async function exportCurrentBatch() {
-    if (!panel) {
+    if (!panel || !isExtensionContextAvailable()) {
       return;
     }
 
@@ -714,7 +1153,7 @@
     panel.feedback.textContent = "Preparing JSON export...";
 
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await safeSendMessage({
         type: MESSAGE_TYPES.exportRequest,
       });
 
@@ -728,6 +1167,64 @@
     } finally {
       panel.exportButton.disabled = false;
     }
+  }
+
+  async function syncTargetCount(value) {
+    if (!isExtensionContextAvailable()) {
+      return;
+    }
+
+    const targetCount = clampTargetCount(value);
+    const response = await safeSendMessage({
+      type: MESSAGE_TYPES.setTargetRequest,
+      targetCount: targetCount,
+    });
+
+    if (!response?.ok) {
+      panel.feedback.textContent = response?.error || "Failed to update target.";
+      return;
+    }
+
+    panel.feedback.textContent = "Target updated to " + response.state.targetCount;
+  }
+
+  async function startCollection() {
+    if (!isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.feedback.textContent = "Starting crawler...";
+
+    const response = await safeSendMessage({
+      type: MESSAGE_TYPES.startRequest,
+      targetCount: clampTargetCount(panel.targetInput.value),
+    });
+
+    if (!response?.ok) {
+      panel.feedback.textContent = response?.error || "Failed to start crawler.";
+      return;
+    }
+
+    panel.feedback.textContent = "Crawler started.";
+  }
+
+  async function stopCollection() {
+    if (!isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.feedback.textContent = "Stopping crawler...";
+
+    const response = await safeSendMessage({
+      type: MESSAGE_TYPES.stopRequest,
+    });
+
+    if (!response?.ok) {
+      panel.feedback.textContent = response?.error || "Failed to stop crawler.";
+      return;
+    }
+
+    panel.feedback.textContent = "Crawler stop requested.";
   }
 
   function handleDragStart(event) {
@@ -790,7 +1287,7 @@
   }
 
   async function persistPanelPreferences() {
-    await chrome.storage.local.set({
+    await safeStorageLocalSet({
       [STORAGE_KEYS.panelPosition]: uiState.panelPosition,
       [STORAGE_KEYS.panelMinimized]: uiState.panelMinimized,
     });
@@ -799,7 +1296,7 @@
   function clampPanelPosition(position, options) {
     const isMinimized = Boolean(options?.minimized);
     const width = isMinimized ? 164 : 320;
-    const height = isMinimized ? 52 : 196;
+    const height = isMinimized ? 52 : 320;
     const maxRight = Math.max(12, window.innerWidth - width - 12);
     const maxTop = Math.max(12, window.innerHeight - height - 12);
 

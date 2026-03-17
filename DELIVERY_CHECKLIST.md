@@ -11,6 +11,8 @@ Use this checklist before saying a task is done, before committing, and before o
 - Any new permission, host permission, or browser surface was reviewed for necessity.
 - If the change touches extraction logic, promoted posts, polls, and suggested-content exclusions were considered explicitly.
 - If the change touches UI, the popup start action, real-time counter, and export action still match the documented MVP.
+- If the change touches crawler control, verify `Start`, `Stop`, target count bounds, and the no-progress stop condition.
+- If the change touches logging, verify the service worker receives operator-meaningful run logs in addition to any page-console output.
 - A Windows system notification was sent with the message `Codex: Tarea completada`.
 
 ## Before Commit

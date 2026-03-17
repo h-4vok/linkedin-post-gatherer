@@ -30,11 +30,16 @@ The script MUST skip:
 To load dynamic content and mimic human browsing:
 - Scroll in increments of 400px to 600px.
 - Random delays of 1.5s to 3.5s between scrolls.
-- Stop automatically after reaching a user-defined limit (default: 50 posts).
+- Start only when the user explicitly triggers collection.
+- Allow the user to stop collection at any time.
+- Stop automatically after reaching a user-defined accepted-post target (default: 50 posts, minimum 1, maximum 200).
+- If LinkedIn temporarily stops yielding new posts, tolerate long idle periods by pausing and retrying before declaring the feed exhausted.
 
 ### D. User Interface (Popup)
-- **Start Hunting Button:** Triggers the scroll and extraction.
-- **Real-time Counter:** Displays `Posts identified: X / 50`.
+- **Start Button:** Triggers scroll and extraction.
+- **Stop Button:** Stops active crawling without clearing the accumulated batch.
+- **Target Input:** Lets the user choose a post target between 1 and 200.
+- **Real-time Counter:** Displays `Posts identified: X / target`.
 - **Export JSON Button:** Generates and downloads a `linkedin_dump_[date].json` file.
 
 ## 4. Output JSON Schema

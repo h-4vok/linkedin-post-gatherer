@@ -10,9 +10,19 @@
       <p class="eyebrow">LinkedIn Intelligence Harvester</p>
       <h1>Current Batch</h1>
       <p id="status" class="status">Looking for the LinkedIn feed...</p>
-      <p id="count" class="count">Posts identified: 0 / live</p>
+      <div class="control-row">
+        <label class="field">
+          <span>Target posts</span>
+          <input id="target-count" type="number" min="1" max="200" value="50" />
+        </label>
+        <button id="start-button" type="button">Start</button>
+      </div>
+      <div class="action-row">
+        <button id="stop-button" type="button" class="secondary">Stop</button>
+        <button id="export-button" type="button">Export JSON</button>
+      </div>
+      <p id="count" class="count">Posts identified: 0 / 50</p>
       <p id="repost-count" class="status">Reposts identified: 0</p>
-      <button id="export-button" type="button">Export JSON</button>
       <p id="export-feedback" class="feedback" aria-live="polite"></p>
     </div>
     <script type="module" src="/src/ui/popup/main.js"></script>

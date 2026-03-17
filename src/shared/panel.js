@@ -5,7 +5,7 @@ const DEFAULT_POSITION = {
 
 const PANEL_SIZE = {
   expandedWidth: 320,
-  expandedHeight: 196,
+  expandedHeight: 320,
   minimizedWidth: 164,
   minimizedHeight: 52,
 };
@@ -64,8 +64,19 @@ export function createPanelMarkup() {
       </header>
       <div class="harvester-body">
         <p class="harvester-status">Waiting for LinkedIn feed...</p>
-        <p class="harvester-count">Posts identified: 0 / live</p>
-        <button class="harvester-export" type="button">Export JSON</button>
+        <div class="harvester-target-row">
+          <label class="harvester-label">
+            Target posts
+            <input class="harvester-target" type="number" min="1" max="200" value="50" />
+          </label>
+          <button class="harvester-button harvester-start" type="button">Start</button>
+        </div>
+        <div class="harvester-actions">
+          <button class="harvester-button harvester-stop" type="button">Stop</button>
+          <button class="harvester-button harvester-export" type="button">Export JSON</button>
+        </div>
+        <p class="harvester-count">Posts identified: 0 / 50</p>
+        <p class="harvester-reposts">Reposts identified: 0</p>
         <p class="harvester-feedback" aria-live="polite"></p>
       </div>
       <button class="harvester-chip" type="button" hidden>

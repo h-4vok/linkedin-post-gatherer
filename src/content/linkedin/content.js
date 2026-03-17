@@ -18,7 +18,7 @@ const STORAGE_KEYS = {
   status: "collector.status",
 };
 
-const processedElements = new WeakSet();
+const processedElements = new WeakMap();
 let feedObserver = null;
 let rootObserver = null;
 let pendingScan = false;

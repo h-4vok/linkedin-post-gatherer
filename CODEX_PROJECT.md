@@ -8,7 +8,7 @@
 
 Browser extension for Chrome/Brave that automates raw data collection from the LinkedIn home feed, filters non-organic content, stores collection progress locally, and exports a final local `JSON` output for later AI analysis.
 
-This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The MVP is a popup-driven extension with a LinkedIn content script, background coordination, and local export. It does not send emails, post replies, or transmit gathered results to external services in this phase.
+This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The MVP is a user-triggered crawler with a LinkedIn content script, background coordination, a floating in-page control panel, popup backup controls, and local export. It does not send emails, post replies, or transmit gathered results to external services in this phase.
 
 ## Mermaid Documentation Convention
 
@@ -23,7 +23,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 ## Main Responsibilities
 
 1. Observe the LinkedIn main feed through a LinkedIn-scoped content script.
-2. Scroll the feed with bounded, human-like timing and distance parameters.
+2. Crawl the feed with bounded, human-like timing and distance parameters after explicit user start.
 3. Exclude promoted posts, polls, and suggested content before capture.
 4. Extract raw post metadata into a stable normalized structure.
 5. Accumulate deduplicated results in local extension state.
@@ -37,7 +37,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - Post extraction and normalization
   - Exclusion of promoted, poll, and suggested posts
   - Local persistence for in-progress collection through `chrome.storage.local`
-  - Popup controls and real-time counters
+  - Floating panel and popup controls with start/stop and target count
   - Final `JSON` export
 - Explicitly out of scope for this phase:
   - Sending emails
@@ -57,22 +57,22 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 ## Execution Contexts
 
 - `background/service worker`
-  - Owns coordination, collection session state, export orchestration, storage access, and cross-context messaging.
+  - Owns coordination, crawler session state, export orchestration, storage access, structured logging, and cross-context messaging.
 - `content script` for LinkedIn
-  - Owns feed access, DOM parsing, exclusion logic, scroll behavior, and per-page extraction.
+  - Owns feed access, DOM parsing, exclusion logic, active scroll behavior, and per-page extraction.
 - `popup UI`
-  - Owns the start button, real-time progress display, and export trigger while delegating business logic to shared modules and background coordination.
+  - Mirrors crawler controls, target count, progress display, and export trigger while delegating business logic to shared modules and background coordination.
 
 ## Runtime Flow
 
 1. The extension loads with the minimum required permissions and host permissions.
-2. The popup triggers a collection run with a post limit, defaulting to `50`.
+2. The user starts a crawl run from the floating panel or popup with an accepted-post target, defaulting to `50`.
 3. A LinkedIn content script inspects the active feed surface and scrolls in bounded randomized increments of `400px` to `600px`.
 4. Between scrolls, the collector waits a randomized delay of `1.5s` to `3.5s`.
 5. For each discovered post container, exclusion rules remove promoted posts, polls, and suggested content.
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
 7. Background logic deduplicates and stores intermediate collection state in `chrome.storage.local`.
-8. The popup receives progress updates in the form `Posts identified: X / limit`.
+8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`.
 9. When requested, export logic produces a local file named `linkedin_dump_[date].json`.
 
 ## Core Operational Contracts
@@ -81,6 +81,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 - Host-specific selectors belong in the LinkedIn content-script layer, not in shared business logic.
 - Shared data structures should be normalized before they enter storage or export code.
 - Message contracts between contexts should be versionable and explicit.
+- Crawler commands, crawl progress, and service-worker log events should flow through explicit tab-scoped messages.
 - Collection must tolerate partial failures, missing selectors, and repeated runs without duplicating results.
 - The main extraction contract for each item is:
   - `link`

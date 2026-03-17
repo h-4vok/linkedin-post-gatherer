@@ -225,17 +225,24 @@ export function analyzePostElement(postElement, now = new Date()) {
 
 export function scanFeedPosts(
   feedContainer,
-  { processedElements = new WeakSet(), nowFactory = () => new Date() } = {},
+  {
+    processedElements = new WeakMap(),
+    nowFactory = () => new Date(),
+  } = {},
 ) {
   const acceptedItems = [];
   const skippedItems = [];
 
   for (const postElement of findPostElements(feedContainer)) {
-    if (processedElements.has(postElement)) {
+    const currentElementSignature = normalizeWhitespace(
+      postElement.textContent || "",
+    ).slice(0, 240);
+
+    if (processedElements.get(postElement) === currentElementSignature) {
       continue;
     }
 
-    processedElements.add(postElement);
+    processedElements.set(postElement, currentElementSignature);
 
     const result = analyzePostElement(postElement, nowFactory());
 

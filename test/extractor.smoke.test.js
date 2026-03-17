@@ -151,7 +151,7 @@ describe("LinkedIn feed smoke extraction", () => {
   it("scans only new elements in repeated rescans", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
-    const processedElements = new WeakSet();
+    const processedElements = new WeakMap();
 
     const firstPass = scanFeedPosts(container, {
       processedElements,
@@ -184,7 +184,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
     const { acceptedItems } = scanFeedPosts(container, {
-      processedElements: new WeakSet(),
+      processedElements: new WeakMap(),
       nowFactory: () => new Date("2026-03-16T20:00:00.000Z"),
     });
 
