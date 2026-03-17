@@ -992,6 +992,7 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          gap: 8px;
           min-height: 28px;
           padding: 0 10px;
           border-radius: 8px;
@@ -1002,11 +1003,28 @@
           letter-spacing: 0.05em;
           text-transform: uppercase;
           border: 1px solid rgba(0, 0, 0, 0.08);
+          position: relative;
+        }
+
+        .harvester-status-badge::before {
+          content: "";
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: #9ca3af;
+          box-shadow: none;
+          flex: 0 0 auto;
         }
 
         .harvester-status-badge[data-run-state="running"] {
           background: rgba(0, 102, 255, 0.1);
           color: #0066ff;
+        }
+
+        .harvester-status-badge[data-run-state="running"]::before {
+          background: #22c55e;
+          box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.42);
+          animation: harvester-status-ping 1.8s ease-out infinite;
         }
 
         .harvester-status-badge[data-run-state="stopping"] {
@@ -1019,9 +1037,31 @@
           color: #047857;
         }
 
+        .harvester-status-badge[data-run-state="completed"]::before {
+          background: #0066ff;
+        }
+
         .harvester-status-badge[data-run-state="unavailable"] {
           background: rgba(239, 68, 68, 0.1);
           color: #b91c1c;
+        }
+
+        .harvester-status-badge[data-run-state="unavailable"]::before {
+          background: #9ca3af;
+        }
+
+        @keyframes harvester-status-ping {
+          0% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.42);
+          }
+
+          70% {
+            box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+          }
+
+          100% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+          }
         }
 
         .harvester-minimize {
@@ -1047,7 +1087,7 @@
         .harvester-activity {
           display: grid;
           gap: 8px;
-          padding: 16px;
+          padding: 12px 16px;
           border: 1px solid #e5e7eb;
           border-radius: 8px;
           background: #ffffff;
@@ -1112,7 +1152,7 @@
 
         .harvester-status {
           margin: 0;
-          color: #6b7280;
+          color: #4b5563;
           font-size: 15px;
           line-height: 1.5;
         }
@@ -1194,7 +1234,8 @@
           box-sizing: border-box;
           border: 1px solid rgba(0, 0, 0, 0.08);
           border-radius: 8px;
-          padding: 12px 14px;
+          padding: 8px 14px;
+          min-height: 34px;
           background: #ffffff;
           color: #111827;
           font-size: 22px;
@@ -1205,7 +1246,8 @@
         .harvester-button {
           border: 0;
           border-radius: 8px;
-          padding: 12px 14px;
+          min-height: 34px;
+          padding: 8px 14px;
           cursor: pointer;
           font-size: 13px;
           font-weight: 500;
@@ -1263,7 +1305,7 @@
           grid-template-columns: 6px 1fr;
           align-items: start;
           gap: 8px;
-          color: #374151;
+          color: #1f2937;
           font-size: 12px;
           line-height: 1.5;
           font-weight: 450;
@@ -1273,7 +1315,8 @@
           content: "";
           width: 6px;
           height: 6px;
-          margin-top: 6px;
+          align-self: start;
+          margin-top: calc((1em * 1.5 - 6px) / 2);
           border-radius: 999px;
           background: #0066ff;
         }
