@@ -46,6 +46,12 @@ describe("floating panel helpers", () => {
 
     expect(markup).toContain("harvester-header");
     expect(markup).toContain("harvester-export");
+    expect(markup).toContain("harvester-start");
+    expect(markup).toContain("harvester-stop");
+    expect(markup).toContain("harvester-status-badge");
+    expect(markup).toContain("harvester-activity-log");
+    expect(markup).toContain("data-target-preset");
+    expect(markup).toContain('type="number"');
     expect(markup).toContain("harvester-chip");
   });
 });

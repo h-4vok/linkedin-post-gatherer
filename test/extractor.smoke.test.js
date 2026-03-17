@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   extractAuthor,
+  extractPostedTime,
+  extractPostText,
   extractRepostMetadata,
   findFeedContainer,
   findPostElements,
@@ -19,6 +21,11 @@ const FEED_FIXTURE = `
           Gonzalo Corbijn
           <span class="verified"></span>
           <span class="relationship"><span> â€¢ 1st</span></span>
+        </span>
+        <p>4h •</p>
+        <span data-testid="expandable-text-box">
+          Full organic text with a hidden ending.
+          <button type="button">... more</button>
         </span>
       </div>
     </div>
@@ -123,10 +130,28 @@ describe("LinkedIn feed smoke extraction", () => {
     });
   });
 
+  it("extracts post text from the preloaded expandable text box", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractPostText(posts[0])).toBe(
+      "Full organic text with a hidden ending.",
+    );
+    expect(extractPostText(posts[2])).toBeNull();
+  });
+
+  it("extracts posted time when LinkedIn exposes a relative timestamp", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractPostedTime(posts[0])).toBe("4h");
+    expect(extractPostedTime(posts[2])).toBeNull();
+  });
+
   it("scans only new elements in repeated rescans", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
-    const processedElements = new WeakSet();
+    const processedElements = new WeakMap();
 
     const firstPass = scanFeedPosts(container, {
       processedElements,
@@ -137,6 +162,11 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(firstPass.acceptedItems).toHaveLength(5);
     expect(firstPass.skippedItems).toContain("promoted");
     expect(firstPass.skippedItems).toContain("missing-author");
+    expect(firstPass.acceptedItems[0]).toMatchObject({
+      author: "Gonzalo Corbijn",
+      post_text: "Full organic text with a hidden ending.",
+      posted_time: "4h",
+    });
     expect(firstPass.acceptedItems[3]).toMatchObject({
       author: "Liz Fong-Jones",
       is_repost: true,
@@ -154,7 +184,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
     const { acceptedItems } = scanFeedPosts(container, {
-      processedElements: new WeakSet(),
+      processedElements: new WeakMap(),
       nowFactory: () => new Date("2026-03-16T20:00:00.000Z"),
     });
 

@@ -3,6 +3,7 @@ const FEED_SELECTOR =
 const POST_SELECTOR = 'div[role="listitem"]';
 const PROMOTED_LABELS = ["Promoted", "Publicidad"];
 const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
+const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
 
 function normalizeWhitespace(value) {
   return value.replace(/\s+/g, " ").trim();
@@ -10,6 +11,13 @@ function normalizeWhitespace(value) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripExpandableSuffix(text) {
+  return text
+    .replace(/(?:…|\.{3})\s*more\s*$/i, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanPersonLabel(text) {
@@ -142,6 +150,32 @@ export function extractRepostMetadata(postElement) {
   };
 }
 
+export function extractPostText(postElement) {
+  const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
+
+  if (!textBox) {
+    return null;
+  }
+
+  const text = stripExpandableSuffix(textBox.textContent || "");
+  return text || null;
+}
+
+export function extractPostedTime(postElement) {
+  const paragraphs = Array.from(postElement.querySelectorAll("p"));
+
+  for (const paragraph of paragraphs) {
+    const text = normalizeWhitespace(paragraph.textContent || "");
+    const match = text.match(POSTED_TIME_PATTERN);
+
+    if (match) {
+      return match[1].toLowerCase();
+    }
+  }
+
+  return null;
+}
+
 export function buildFingerprint(postElement, author) {
   const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
     0,
@@ -161,7 +195,8 @@ export function buildNormalizedItem(
     link: null,
     author,
     reposted_by: repostMetadata.reposted_by,
-    post_text: null,
+    post_text: extractPostText(postElement),
+    posted_time: extractPostedTime(postElement),
     is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),
@@ -190,17 +225,24 @@ export function analyzePostElement(postElement, now = new Date()) {
 
 export function scanFeedPosts(
   feedContainer,
-  { processedElements = new WeakSet(), nowFactory = () => new Date() } = {},
+  {
+    processedElements = new WeakMap(),
+    nowFactory = () => new Date(),
+  } = {},
 ) {
   const acceptedItems = [];
   const skippedItems = [];
 
   for (const postElement of findPostElements(feedContainer)) {
-    if (processedElements.has(postElement)) {
+    const currentElementSignature = normalizeWhitespace(
+      postElement.textContent || "",
+    ).slice(0, 240);
+
+    if (processedElements.get(postElement) === currentElementSignature) {
       continue;
     }
 
-    processedElements.add(postElement);
+    processedElements.set(postElement, currentElementSignature);
 
     const result = analyzePostElement(postElement, nowFactory());
 

@@ -1,4 +1,11 @@
-import { STATUS_TEXT } from "./constants.js";
+import { RUN_STATES, STATUS_TEXT, TARGET_COUNT_DEFAULT } from "./constants.js";
+import {
+  clampTargetCount,
+  getFeedState,
+  getProgressState,
+  getStartState,
+  getStoppedState,
+} from "./crawler.js";
 
 const tabStates = new Map();
 
@@ -6,6 +13,11 @@ function createEmptyState() {
   return {
     itemsByFingerprint: new Map(),
     status: STATUS_TEXT.idle,
+    runState: RUN_STATES.idle,
+    targetCount: TARGET_COUNT_DEFAULT,
+    noProgressCycles: 0,
+    stalledWaitCount: 0,
+    lastReason: null,
   };
 }
 
@@ -40,6 +52,11 @@ export function getSerializableState(tabId) {
     count: tabState.itemsByFingerprint.size,
     repostCount: items.filter((item) => item.is_repost).length,
     status: tabState.status,
+    runState: tabState.runState,
+    targetCount: tabState.targetCount,
+    noProgressCycles: tabState.noProgressCycles,
+    stalledWaitCount: tabState.stalledWaitCount,
+    lastReason: tabState.lastReason,
   };
 }
 
@@ -47,6 +64,79 @@ export function markStatus(tabId, status) {
   const tabState = getOrCreateTabState(tabId);
   tabState.status = status;
   return persistState(tabId);
+}
+
+export function setTargetCount(tabId, targetCount) {
+  const tabState = getOrCreateTabState(tabId);
+  tabState.targetCount = clampTargetCount(targetCount);
+  return persistState(tabId);
+}
+
+export function markFeedReady(tabId, feedFound) {
+  const tabState = getOrCreateTabState(tabId);
+  const nextState = getFeedState(tabState.runState, feedFound);
+
+  if (nextState) {
+    tabState.runState = nextState.runState;
+    tabState.status = nextState.status;
+    tabState.noProgressCycles = 0;
+    tabState.stalledWaitCount = 0;
+    tabState.lastReason = feedFound ? null : "feed-unavailable";
+  }
+
+  return persistState(tabId);
+}
+
+export function startCrawler(tabId, targetCount) {
+  const tabState = getOrCreateTabState(tabId);
+  Object.assign(tabState, getStartState(targetCount));
+  return persistState(tabId);
+}
+
+export function requestStopCrawler(tabId) {
+  const tabState = getOrCreateTabState(tabId);
+
+  if (tabState.runState === RUN_STATES.running) {
+    tabState.runState = RUN_STATES.stopping;
+    tabState.status = STATUS_TEXT.stopping;
+    tabState.lastReason = "user";
+  }
+
+  return persistState(tabId);
+}
+
+export function finalizeStopCrawler(tabId, reason = "user") {
+  const tabState = getOrCreateTabState(tabId);
+  Object.assign(tabState, getStoppedState(reason));
+  return persistState(tabId);
+}
+
+export function applyCrawlerProgress(
+  tabId,
+  { addedCount = 0, noProgressLimit, stalledWaitLimit } = {},
+) {
+  const tabState = getOrCreateTabState(tabId);
+  const totalCount = tabState.itemsByFingerprint.size;
+  const progressState = getProgressState(tabState, {
+    addedCount,
+    totalCount,
+    noProgressLimit,
+    stalledWaitLimit,
+  });
+
+  tabState.runState = progressState.runState;
+  tabState.status = progressState.status;
+  tabState.noProgressCycles = progressState.noProgressCycles;
+  tabState.stalledWaitCount = progressState.stalledWaitCount;
+  tabState.lastReason = progressState.lastReason;
+
+  return persistState(tabId).then((state) => ({
+    state,
+    shouldStop: progressState.shouldStop,
+    shouldLongWait: progressState.shouldLongWait,
+    longWaitMs: progressState.longWaitMs,
+    stopReason: progressState.stopReason,
+  }));
 }
 
 export function mergeNewItems(tabId, items) {
@@ -98,6 +188,11 @@ export async function hydrateStateFromStorage(tabId) {
   }
 
   tabState.status = storedState?.status || STATUS_TEXT.idle;
+  tabState.runState = storedState?.runState || RUN_STATES.idle;
+  tabState.targetCount = clampTargetCount(storedState?.targetCount);
+  tabState.noProgressCycles = storedState?.noProgressCycles || 0;
+  tabState.stalledWaitCount = storedState?.stalledWaitCount || 0;
+  tabState.lastReason = storedState?.lastReason || null;
   tabStates.set(tabId, tabState);
 
   return getSerializableState(tabId);

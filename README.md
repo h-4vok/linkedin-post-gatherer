@@ -7,29 +7,35 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - Platform: `Manifest V3`
 - Browsers: `Chrome`, `Brave`
 - Stack: `JavaScript` + `Vite`
-- UI: popup with start button, live counter, and export action
+- UI: floating control console plus popup backup, with quick target presets, live metrics, and activity log
 - Product mode: local collection and local export only
 
-This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on LinkedIn home-feed collection, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
+This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
 
 Collected post batches are scoped to the current browser tab/session. Persistent local storage is reserved for lightweight UI preferences such as the floating panel position.
 
 ## MVP Behavior
 
-- Extract `author`, `reposted_by`, `post_text`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
+- Extract `author`, `reposted_by`, `post_text`, `posted_time`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
+- Read `post_text` from LinkedIn's preloaded expandable text box when present, without clicking `more`
+- Preserve LinkedIn's relative post age in `posted_time` when a clear value such as `4h` or `2w` is present
+- Start and stop crawling explicitly from the floating panel or popup instead of auto-collecting on feed load
 - Skip promoted posts, polls, and suggested content
 - Scroll in randomized increments between `400px` and `600px`
 - Wait randomized delays between `1.5s` and `3.5s`
-- Stop automatically at a user-defined post limit with default `50`
+- Stop automatically at a user-defined accepted-post target with default `50` and supported range `1-200`
+- When LinkedIn stops yielding new accepted posts, pause for up to `5m` and retry multiple times before declaring the feed stalled
 - Export a local file named `linkedin_dump_[date].json`
 
 ## Expected Workflow
 
 1. Load the extension locally in a Chromium browser.
-2. Open LinkedIn and start the hunting flow from the popup.
-3. Watch the live `Posts identified: X / limit` counter as collection progresses.
-4. Review accumulated results in local extension state.
-5. Export the final `JSON` payload for downstream manual use.
+2. Open LinkedIn and choose a target post count in the floating panel or popup.
+3. Use quick presets such as `25`, `50`, or `100`, or type a custom target.
+4. Press `Start` to begin crawler-driven scrolling and collection.
+5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
+6. Press `Stop` at any time or let the crawler stop automatically at the target.
+7. Export the final `JSON` payload for downstream manual use.
 
 ## Standard Commands
 

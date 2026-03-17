@@ -11,8 +11,8 @@ Repository-specific working rules for `linkedin-post-gatherer`. This file applie
 
 - The product is a Chrome/Brave browser extension built on `Manifest V3`.
 - The official stack is `JavaScript` + `Vite` + `ESLint` + `Prettier` + `Vitest`.
-- The current product goal is raw collection from the LinkedIn home feed and local generation of a final `JSON` payload for later AI analysis.
-- The MVP is a single-browser workflow with a popup UI, LinkedIn content script, background coordination, and `chrome.storage.local` persistence.
+- The current product goal is user-triggered crawling of the LinkedIn home feed and local generation of a final `JSON` payload for later AI analysis.
+- The MVP is a single-browser workflow with a floating in-page panel, popup backup UI, LinkedIn content script, background coordination, and tab-scoped session persistence.
 - This phase does not send emails, post comments, or transmit gathered data to external APIs.
 
 ## Target Architecture
@@ -64,10 +64,11 @@ Recommended local order before commit:
 - Make collection flows resumable and deduplicated so re-running a scan does not duplicate the same post in local state.
 - Prefer rate-limited scrolling, bounded retries, and observable failure reasons over aggressive automation loops.
 - Separate post detection, exclusion filtering, normalization, storage, and final export so each stage can be verified independently.
+- Keep crawler start/stop controls explicit; the extension must not begin active scrolling until the user starts a run.
 - The MVP scroll engine should stay within documented bounds unless requirements change:
   - scroll increments between `400px` and `600px`
   - delays between `1.5s` and `3.5s`
-  - automatic stop at a user-configurable capture limit with default `50`
+  - automatic stop at a user-configurable accepted-post target with default `50`
 - The MVP must skip non-organic content including promoted posts, polls, and suggested content.
 
 ## Storage And Messaging Rules
@@ -86,9 +87,11 @@ Recommended local order before commit:
   - `author`
   - `reposted_by`
   - `post_text`
+  - `posted_time`
   - `is_repost`
   - `type`
   - `extracted_at`
+- Treat crawler operational logs in the service worker as the primary debug stream for run control, scrolling, and stop conditions.
 - When requirements contain naming mistakes, internal docs should use the corrected canonical field name rather than copying the typo into long-term contracts.
 
 ## Documentation Rules
@@ -101,7 +104,7 @@ Recommended local order before commit:
 
 ## Completion Notification Rule
 
-- When a task is completed, send a Windows system notification with the exact message `Codex: Tarea completada`.
+- When a task is completed, send a Windows system notification with the exact message `linkedin-post-gathered: Tarea terminada`.
 
 ## Repo Conventions Worth Preserving
 
