@@ -255,6 +255,7 @@ async function broadcastCountUpdated(tabId, state) {
     runState: state.runState,
     targetCount: state.targetCount,
     noProgressCycles: state.noProgressCycles,
+    stalledWaitCount: state.stalledWaitCount,
   };
 
   try {

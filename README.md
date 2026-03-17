@@ -7,7 +7,7 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - Platform: `Manifest V3`
 - Browsers: `Chrome`, `Brave`
 - Stack: `JavaScript` + `Vite`
-- UI: popup with start button, live counter, and export action
+- UI: floating control console plus popup backup, with quick target presets, live metrics, and activity log
 - Product mode: local collection and local export only
 
 This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
@@ -31,10 +31,11 @@ Collected post batches are scoped to the current browser tab/session. Persistent
 
 1. Load the extension locally in a Chromium browser.
 2. Open LinkedIn and choose a target post count in the floating panel or popup.
-3. Press `Start` to begin crawler-driven scrolling and collection.
-4. Watch the live `Posts identified: X / target` counter as collection progresses.
-5. Press `Stop` at any time or let the crawler stop automatically at the target.
-6. Export the final `JSON` payload for downstream manual use.
+3. Use quick presets such as `25`, `50`, or `100`, or type a custom target.
+4. Press `Start` to begin crawler-driven scrolling and collection.
+5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
+6. Press `Stop` at any time or let the crawler stop automatically at the target.
+7. Export the final `JSON` payload for downstream manual use.
 
 ## Standard Commands
 

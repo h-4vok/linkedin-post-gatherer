@@ -23,6 +23,9 @@
   const SCROLL_DELAY_MIN_MS = 1500;
   const SCROLL_DELAY_MAX_MS = 3500;
   const LONG_WAIT_MS = 300000;
+  const STALLED_WAIT_LIMIT = 3;
+  const ACTIVITY_LIMIT = 4;
+  const TARGET_PRESETS = [25, 50, 100];
 
   const MESSAGE_TYPES = {
     feedReady: "collector/feed-ready",
@@ -63,6 +66,7 @@
     targetCount: TARGET_COUNT_DEFAULT,
     noProgressCycles: 0,
     stalledWaitCount: 0,
+    activityItems: [],
     panelPosition: { ...DEFAULT_PANEL_POSITION },
     panelMinimized: false,
     feedVisible: false,
@@ -116,11 +120,13 @@
     uiState.runState = response?.state?.runState || RUN_STATES.idle;
     uiState.targetCount = clampTargetCount(response?.state?.targetCount);
     uiState.noProgressCycles = response?.state?.noProgressCycles || 0;
+    uiState.stalledWaitCount = response?.state?.stalledWaitCount || 0;
     uiState.panelPosition = clampPanelPosition(
       stored[STORAGE_KEYS.panelPosition] || DEFAULT_PANEL_POSITION,
       { minimized: stored[STORAGE_KEYS.panelMinimized] || false },
     );
     uiState.panelMinimized = Boolean(stored[STORAGE_KEYS.panelMinimized]);
+    pushActivity(uiState.status);
   }
 
   function handleStorageChange(changes, areaName) {
@@ -146,6 +152,32 @@
 
   function handleRuntimeMessage(message) {
     if (message?.type === MESSAGE_TYPES.countUpdated) {
+      if ((message.count || 0) > uiState.count) {
+        pushActivity(
+          "Captured " + ((message.count || 0) - uiState.count) + " new posts.",
+        );
+      }
+
+      if ((message.repostCount || 0) > uiState.repostCount) {
+        pushActivity(
+          "Detected " + (message.repostCount || 0) + " reposts so far.",
+        );
+      }
+
+      if ((message.stalledWaitCount || 0) > uiState.stalledWaitCount) {
+        pushActivity(
+          "Long wait " +
+            (message.stalledWaitCount || 0) +
+            " / " +
+            STALLED_WAIT_LIMIT +
+            " scheduled.",
+        );
+      }
+
+      if (message.status && message.status !== uiState.status) {
+        pushActivity(message.status);
+      }
+
       uiState.count = message.count || 0;
       uiState.repostCount = message.repostCount || 0;
       uiState.status = message.status || STATUS_TEXT.idle;
@@ -382,6 +414,21 @@
     console.log("[harvester]", event, payload || {});
   }
 
+  function pushActivity(message) {
+    if (!message) {
+      return;
+    }
+
+    if (uiState.activityItems[0] === message) {
+      return;
+    }
+
+    uiState.activityItems = [message, ...uiState.activityItems].slice(
+      0,
+      ACTIVITY_LIMIT,
+    );
+  }
+
   function logToServiceWorker(event, payload) {
     return safeSendMessage({
       type: MESSAGE_TYPES.log,
@@ -392,6 +439,32 @@
 
   function normalizeWhitespace(value) {
     return value.replace(/\s+/g, " ").trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function formatRunState(runState) {
+    switch (runState) {
+      case RUN_STATES.running:
+        return "Running";
+      case RUN_STATES.stopping:
+        return "Stopping";
+      case RUN_STATES.completed:
+        return "Complete";
+      case RUN_STATES.unavailable:
+        return "Offline";
+      case RUN_STATES.stopped:
+        return "Stopped";
+      default:
+        return "Idle";
+    }
   }
 
   function escapeRegExp(value) {
@@ -639,6 +712,7 @@
       uiState.feedVisible = false;
       uiState.status = STATUS_TEXT.unavailable;
       uiState.runState = RUN_STATES.unavailable;
+      pushActivity(STATUS_TEXT.unavailable);
       renderPanel();
       if (shouldNotifyUnavailable) {
         logPage("feed container not found yet");
@@ -657,6 +731,7 @@
     activeFeedContainer = feedContainer;
 
     uiState.feedVisible = true;
+    pushActivity(STATUS_TEXT.attached);
     renderPanel();
 
     logPage("feed container attached", {
@@ -844,21 +919,25 @@
         .harvester-shell {
           position: fixed;
           display: grid;
-          gap: 0;
+          gap: 14px;
           width: 320px;
-          background: #f3efe6;
-          color: #18222d;
-          border: 1px solid rgba(24, 34, 45, 0.12);
-          border-radius: 18px;
-          box-shadow: 0 18px 40px rgba(24, 34, 45, 0.22);
-          overflow: hidden;
+          padding: 18px;
+          background:
+            radial-gradient(circle at top left, rgba(23, 144, 255, 0.18), transparent 40%),
+            linear-gradient(180deg, rgba(248, 241, 230, 0.98) 0%, rgba(239, 231, 216, 0.98) 100%);
+          color: #132033;
+          border: 1px solid rgba(19, 32, 51, 0.08);
+          border-radius: 20px;
+          box-shadow: 0 24px 54px rgba(19, 32, 51, 0.18);
           pointer-events: auto;
-          font-family: "Segoe UI", sans-serif;
+          font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+          backdrop-filter: blur(14px);
         }
 
         .harvester-shell[data-state="minimized"] {
           width: 164px;
-          border-radius: 999px;
+          border-radius: 18px;
+          padding: 10px 12px;
         }
 
         .harvester-header {
@@ -866,8 +945,6 @@
           align-items: flex-start;
           justify-content: space-between;
           gap: 12px;
-          padding: 14px 16px 12px;
-          background: linear-gradient(135deg, #fff8ee 0%, #f3efe6 100%);
           cursor: grab;
           user-select: none;
         }
@@ -876,25 +953,68 @@
           cursor: grabbing;
         }
 
+        .harvester-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
         .harvester-eyebrow {
           margin: 0 0 6px;
-          color: #7c4f22;
+          color: #82511d;
           font-size: 11px;
           font-weight: 800;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
         }
 
         .harvester-title {
           margin: 0;
-          font-size: 20px;
-          line-height: 1.1;
+          font-size: 26px;
+          line-height: 1;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+        }
+
+        .harvester-status-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 34px;
+          padding: 0 14px;
+          border-radius: 14px;
+          background: rgba(19, 32, 51, 0.08);
+          color: #27405c;
+          font-size: 12px;
           font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+
+        .harvester-status-badge[data-run-state="running"] {
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          color: #ffffff;
+          box-shadow: 0 10px 24px rgba(10, 102, 194, 0.28);
+        }
+
+        .harvester-status-badge[data-run-state="stopping"] {
+          background: linear-gradient(135deg, #ef8c24 0%, #ffb648 100%);
+          color: #ffffff;
+        }
+
+        .harvester-status-badge[data-run-state="completed"] {
+          background: linear-gradient(135deg, #088f6a 0%, #15c994 100%);
+          color: #ffffff;
+        }
+
+        .harvester-status-badge[data-run-state="unavailable"] {
+          background: rgba(178, 47, 47, 0.12);
+          color: #8d2727;
         }
 
         .harvester-minimize {
           border: 0;
-          border-radius: 999px;
+          border-radius: 14px;
           min-width: 34px;
           height: 34px;
           background: rgba(10, 102, 194, 0.12);
@@ -907,85 +1027,171 @@
 
         .harvester-body {
           display: grid;
-          gap: 12px;
-          padding: 0 16px 16px;
+          gap: 14px;
+        }
+
+        .harvester-hero,
+        .harvester-activity {
+          display: grid;
+          gap: 10px;
+          padding: 18px;
+          border: 1px solid rgba(19, 32, 51, 0.08);
+          border-radius: 18px;
+          background:
+            linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 238, 0.88)),
+            linear-gradient(180deg, #ffffff 0%, #f7f0e5 100%);
+          box-shadow: 0 20px 40px rgba(19, 32, 51, 0.12);
+        }
+
+        .harvester-hero-label,
+        .harvester-activity-label,
+        .harvester-metric-label {
+          color: #5d7290;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .harvester-hero-metric {
+          display: flex;
+          align-items: flex-end;
+          gap: 8px;
+          line-height: 1;
+        }
+
+        .harvester-hero-count,
+        .harvester-hero-target {
+          font-weight: 900;
+          letter-spacing: -0.05em;
+        }
+
+        .harvester-hero-count {
+          font-size: 56px;
+        }
+
+        .harvester-hero-target {
+          font-size: 28px;
+          color: #5d7290;
+          padding-bottom: 6px;
+        }
+
+        .harvester-hero-separator {
+          font-size: 28px;
+          color: rgba(19, 32, 51, 0.28);
+          padding-bottom: 6px;
+        }
+
+        .harvester-status {
+          color: #40546f;
+          font-size: 15px;
+          line-height: 1.5;
         }
 
         .harvester-target-row,
-        .harvester-actions {
+        .harvester-actions,
+        .harvester-presets,
+        .harvester-metrics {
           display: grid;
-          gap: 8px;
+          gap: 10px;
+        }
+
+        .harvester-presets,
+        .harvester-metrics {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .harvester-metric-card {
+          display: grid;
+          gap: 6px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.72);
+          border: 1px solid rgba(19, 32, 51, 0.08);
+        }
+
+        .harvester-metric-value,
+        .harvester-reposts,
+        .harvester-mode,
+        .harvester-wait-count {
+          font-size: 18px;
+          line-height: 1.1;
+          letter-spacing: -0.03em;
+          font-weight: 800;
+        }
+
+        .harvester-preset {
+          border: 0;
+          border-radius: 16px;
+          padding: 10px 14px;
+          background: rgba(19, 32, 51, 0.08);
+          color: #203247;
+          cursor: pointer;
+          font-size: 15px;
+          font-weight: 800;
+        }
+
+        .harvester-preset.is-active {
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          color: #ffffff;
+          box-shadow: 0 10px 24px rgba(10, 102, 194, 0.22);
         }
 
         .harvester-target-row {
-          grid-template-columns: 1fr 96px;
+          grid-template-columns: 1fr 112px;
           align-items: end;
         }
 
         .harvester-label {
           display: grid;
-          gap: 4px;
+          gap: 6px;
           margin: 0;
           color: #43576b;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 800;
         }
 
         .harvester-target {
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid rgba(24, 34, 45, 0.18);
-          border-radius: 12px;
-          padding: 10px 12px;
-          background: #fffdfa;
-          color: #18222d;
-          font-size: 14px;
-          font-weight: 700;
-        }
-
-        .harvester-status,
-        .harvester-count,
-        .harvester-reposts,
-        .harvester-feedback,
-        .harvester-chip {
-          margin: 0;
-          font-size: 14px;
-          line-height: 1.4;
-        }
-
-        .harvester-status {
-          color: #43576b;
-        }
-
-        .harvester-count {
-          font-weight: 800;
+          border: 1px solid rgba(19, 32, 51, 0.16);
+          border-radius: 14px;
+          padding: 14px 16px;
+          background: rgba(255, 255, 255, 0.88);
+          color: #132033;
+          font-size: 22px;
+          font-weight: 900;
+          letter-spacing: -0.03em;
         }
 
         .harvester-button {
           border: 0;
-          border-radius: 999px;
-          padding: 12px 14px;
+          border-radius: 16px;
+          padding: 14px 16px;
           cursor: pointer;
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 800;
         }
 
         .harvester-start {
-          background: #0a66c2;
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
           color: #ffffff;
+          box-shadow: 0 14px 30px rgba(10, 102, 194, 0.25);
         }
 
         .harvester-stop {
-          background: rgba(24, 34, 45, 0.12);
-          color: #18222d;
+          background: rgba(19, 32, 51, 0.1);
+          color: #203247;
         }
 
         .harvester-export {
-          background: #0a66c2;
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
           color: #ffffff;
+          box-shadow: 0 14px 30px rgba(10, 102, 194, 0.25);
         }
 
-        .harvester-button:disabled {
+        .harvester-button:disabled,
+        .harvester-preset:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
@@ -995,6 +1201,33 @@
           min-height: 20px;
         }
 
+        .harvester-activity-log {
+          display: grid;
+          gap: 8px;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .harvester-activity-log li {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: #31465f;
+          font-size: 13px;
+          line-height: 1.4;
+        }
+
+        .harvester-activity-log li::before {
+          content: "";
+          width: 8px;
+          height: 8px;
+          border-radius: 4px;
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          box-shadow: 0 0 0 4px rgba(10, 102, 194, 0.12);
+          flex: 0 0 auto;
+        }
+
         .harvester-chip {
           display: none;
           align-items: center;
@@ -1002,14 +1235,30 @@
           gap: 8px;
           width: 100%;
           border: 0;
-          border-radius: 999px;
-          padding: 14px 16px;
-          background: #0a66c2;
+          border-radius: 18px;
+          padding: 12px 14px;
+          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
           color: #ffffff;
           cursor: pointer;
           font-size: 13px;
           font-weight: 800;
           letter-spacing: 0.02em;
+          box-shadow: 0 18px 32px rgba(10, 102, 194, 0.28);
+        }
+
+        .harvester-chip-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .harvester-chip-label::before {
+          content: "";
+          width: 8px;
+          height: 8px;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.82);
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.16);
         }
 
         .harvester-chip-count {
@@ -1018,7 +1267,7 @@
           justify-content: center;
           min-width: 28px;
           padding: 2px 8px;
-          border-radius: 999px;
+          border-radius: 12px;
           background: rgba(255, 255, 255, 0.18);
         }
 
@@ -1035,12 +1284,42 @@
         <header class="harvester-header" data-drag-handle="true">
           <div>
             <p class="harvester-eyebrow">LinkedIn Intelligence Harvester</p>
-            <h2 class="harvester-title">Current Batch</h2>
+            <h2 class="harvester-title">Harvester Console</h2>
           </div>
-          <button class="harvester-minimize" type="button" aria-label="Minimize panel">-</button>
+          <div class="harvester-header-actions">
+            <span class="harvester-status-badge" data-run-state="idle">Idle</span>
+            <button class="harvester-minimize" type="button" aria-label="Minimize panel">-</button>
+          </div>
         </header>
         <div class="harvester-body">
-          <p class="harvester-status">Waiting for LinkedIn feed...</p>
+          <section class="harvester-hero">
+            <p class="harvester-hero-label">Accepted posts</p>
+            <div class="harvester-hero-metric">
+              <span class="harvester-hero-count">0</span>
+              <span class="harvester-hero-separator">/</span>
+              <span class="harvester-hero-target">50</span>
+            </div>
+            <p class="harvester-status">Waiting for LinkedIn feed...</p>
+          </section>
+          <div class="harvester-metrics">
+            <article class="harvester-metric-card">
+              <span class="harvester-metric-label">Reposts</span>
+              <strong class="harvester-reposts">0</strong>
+            </article>
+            <article class="harvester-metric-card">
+              <span class="harvester-metric-label">Mode</span>
+              <strong class="harvester-mode">Idle</strong>
+            </article>
+            <article class="harvester-metric-card">
+              <span class="harvester-metric-label">Long wait</span>
+              <strong class="harvester-wait-count">0 / 3</strong>
+            </article>
+          </div>
+          <div class="harvester-presets">
+            <button class="harvester-preset" type="button" data-target-preset="25">25</button>
+            <button class="harvester-preset" type="button" data-target-preset="50">50</button>
+            <button class="harvester-preset" type="button" data-target-preset="100">100</button>
+          </div>
           <div class="harvester-target-row">
             <label class="harvester-label">
               Target posts
@@ -1050,14 +1329,19 @@
           </div>
           <div class="harvester-actions">
             <button class="harvester-button harvester-stop" type="button">Stop</button>
-            <button class="harvester-button harvester-export" type="button">Export JSON</button>
+            <button class="harvester-button harvester-export" type="button">Export</button>
           </div>
-          <p class="harvester-count">Posts identified: 0 / 50</p>
-          <p class="harvester-reposts">Reposts identified: 0</p>
-          <p class="harvester-feedback" aria-live="polite"></p>
+          <section class="harvester-activity">
+            <p class="harvester-activity-label">Activity</p>
+            <ul class="harvester-activity-log">
+              <li>Waiting for LinkedIn feed...</li>
+            </ul>
+          </section>
+          <p class="harvester-feedback" aria-live="polite" hidden></p>
         </div>
         <button class="harvester-chip" type="button" hidden>
-          Harvester <span class="harvester-chip-count">0</span>
+          <span class="harvester-chip-label">Harvester</span>
+          <span class="harvester-chip-count">0</span>
         </button>
       </section>
     `;
@@ -1069,16 +1353,22 @@
       shadowRoot: shadowRoot,
       shell: shadowRoot.querySelector(".harvester-shell"),
       header: shadowRoot.querySelector(".harvester-header"),
+      statusBadge: shadowRoot.querySelector(".harvester-status-badge"),
       minimizeButton: shadowRoot.querySelector(".harvester-minimize"),
       status: shadowRoot.querySelector(".harvester-status"),
+      heroCount: shadowRoot.querySelector(".harvester-hero-count"),
+      heroTarget: shadowRoot.querySelector(".harvester-hero-target"),
       targetInput: shadowRoot.querySelector(".harvester-target"),
       startButton: shadowRoot.querySelector(".harvester-start"),
       stopButton: shadowRoot.querySelector(".harvester-stop"),
-      count: shadowRoot.querySelector(".harvester-count"),
       reposts: shadowRoot.querySelector(".harvester-reposts"),
+      mode: shadowRoot.querySelector(".harvester-mode"),
+      waitCount: shadowRoot.querySelector(".harvester-wait-count"),
       exportButton: shadowRoot.querySelector(".harvester-export"),
       feedback: shadowRoot.querySelector(".harvester-feedback"),
+      activityLog: shadowRoot.querySelector(".harvester-activity-log"),
       chip: shadowRoot.querySelector(".harvester-chip"),
+      presetButtons: Array.from(shadowRoot.querySelectorAll(".harvester-preset")),
       chipCount: shadowRoot.querySelector(".harvester-chip-count"),
     };
 
@@ -1089,6 +1379,14 @@
     });
     panel.targetInput.addEventListener("change", function (event) {
       void syncTargetCount(event.target.value);
+    });
+    panel.presetButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        void syncTargetCount(button.dataset.targetPreset, {
+          logMessage:
+            "Preset target " + clampTargetCount(button.dataset.targetPreset) + " applied.",
+        });
+      });
     });
     panel.startButton.addEventListener("click", function () {
       void startCollection();
@@ -1115,10 +1413,19 @@
     panel.host.style.display = uiState.feedVisible ? "block" : "none";
     panel.shell.dataset.state = uiState.panelMinimized ? "minimized" : "expanded";
     panel.status.textContent = uiState.status;
+    panel.statusBadge.textContent = formatRunState(uiState.runState);
+    panel.statusBadge.dataset.runState = uiState.runState;
     panel.targetInput.value = String(uiState.targetCount);
     panel.targetInput.disabled =
       uiState.runState === RUN_STATES.running ||
       uiState.runState === RUN_STATES.stopping;
+    panel.presetButtons.forEach(function (button) {
+      const preset = clampTargetCount(button.dataset.targetPreset);
+      button.classList.toggle("is-active", preset === uiState.targetCount);
+      button.disabled =
+        uiState.runState === RUN_STATES.running ||
+        uiState.runState === RUN_STATES.stopping;
+    });
     panel.startButton.disabled =
       uiState.runState === RUN_STATES.running ||
       uiState.runState === RUN_STATES.stopping ||
@@ -1126,9 +1433,17 @@
     panel.stopButton.disabled =
       uiState.runState !== RUN_STATES.running &&
       uiState.runState !== RUN_STATES.stopping;
-    panel.count.textContent =
-      "Posts identified: " + uiState.count + " / " + uiState.targetCount;
-    panel.reposts.textContent = "Reposts identified: " + uiState.repostCount;
+    panel.heroCount.textContent = String(uiState.count);
+    panel.heroTarget.textContent = String(uiState.targetCount);
+    panel.reposts.textContent = String(uiState.repostCount);
+    panel.mode.textContent = formatRunState(uiState.runState);
+    panel.waitCount.textContent =
+      uiState.stalledWaitCount + " / " + STALLED_WAIT_LIMIT;
+    panel.activityLog.innerHTML = uiState.activityItems
+      .map(function (item) {
+        return "<li>" + escapeHtml(item) + "</li>";
+      })
+      .join("");
     panel.chipCount.textContent = String(uiState.count);
     panel.chip.hidden = !uiState.panelMinimized;
     applyPanelPosition();
@@ -1150,7 +1465,7 @@
     }
 
     panel.exportButton.disabled = true;
-    panel.feedback.textContent = "Preparing JSON export...";
+    pushActivity("Export requested.");
 
     try {
       const response = await safeSendMessage({
@@ -1161,15 +1476,16 @@
         throw new Error(response?.error || "Export failed");
       }
 
-      panel.feedback.textContent = "Downloaded " + response.filename;
+      pushActivity("Downloaded " + response.filename);
     } catch (error) {
-      panel.feedback.textContent = error.message;
+      pushActivity(error.message);
     } finally {
       panel.exportButton.disabled = false;
+      renderPanel();
     }
   }
 
-  async function syncTargetCount(value) {
+  async function syncTargetCount(value, options) {
     if (!isExtensionContextAvailable()) {
       return;
     }
@@ -1181,11 +1497,16 @@
     });
 
     if (!response?.ok) {
-      panel.feedback.textContent = response?.error || "Failed to update target.";
+      pushActivity(response?.error || "Failed to update target.");
+      renderPanel();
       return;
     }
 
-    panel.feedback.textContent = "Target updated to " + response.state.targetCount;
+    pushActivity(
+      options?.logMessage ||
+        "Target updated to " + response.state.targetCount + ".",
+    );
+    renderPanel();
   }
 
   async function startCollection() {
@@ -1193,7 +1514,8 @@
       return;
     }
 
-    panel.feedback.textContent = "Starting crawler...";
+    pushActivity("Start requested.");
+    renderPanel();
 
     const response = await safeSendMessage({
       type: MESSAGE_TYPES.startRequest,
@@ -1201,11 +1523,13 @@
     });
 
     if (!response?.ok) {
-      panel.feedback.textContent = response?.error || "Failed to start crawler.";
+      pushActivity(response?.error || "Failed to start crawler.");
+      renderPanel();
       return;
     }
 
-    panel.feedback.textContent = "Crawler started.";
+    pushActivity("Crawler started.");
+    renderPanel();
   }
 
   async function stopCollection() {
@@ -1213,18 +1537,21 @@
       return;
     }
 
-    panel.feedback.textContent = "Stopping crawler...";
+    pushActivity("Stop requested.");
+    renderPanel();
 
     const response = await safeSendMessage({
       type: MESSAGE_TYPES.stopRequest,
     });
 
     if (!response?.ok) {
-      panel.feedback.textContent = response?.error || "Failed to stop crawler.";
+      pushActivity(response?.error || "Failed to stop crawler.");
+      renderPanel();
       return;
     }
 
-    panel.feedback.textContent = "Crawler stop requested.";
+    pushActivity("Crawler stop requested.");
+    renderPanel();
   }
 
   function handleDragStart(event) {
@@ -1296,7 +1623,7 @@
   function clampPanelPosition(position, options) {
     const isMinimized = Boolean(options?.minimized);
     const width = isMinimized ? 164 : 320;
-    const height = isMinimized ? 52 : 320;
+    const height = isMinimized ? 52 : 430;
     const maxRight = Math.max(12, window.innerWidth - width - 12);
     const maxTop = Math.max(12, window.innerHeight - height - 12);
 

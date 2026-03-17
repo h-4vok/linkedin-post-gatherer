@@ -39,7 +39,10 @@ To load dynamic content and mimic human browsing:
 - **Start Button:** Triggers scroll and extraction.
 - **Stop Button:** Stops active crawling without clearing the accumulated batch.
 - **Target Input:** Lets the user choose a post target between 1 and 200.
+- **Quick Presets:** Provide fast target presets such as 25, 50, and 100.
 - **Real-time Counter:** Displays `Posts identified: X / target`.
+- **Status Badge and Metrics:** Show crawler mode, repost count, and long-wait progress.
+- **Activity Log:** Show the latest crawler actions without requiring the user to open DevTools.
 - **Export JSON Button:** Generates and downloads a `linkedin_dump_[date].json` file.
 
 ## 4. Output JSON Schema
