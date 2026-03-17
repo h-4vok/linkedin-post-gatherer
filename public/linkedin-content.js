@@ -914,29 +914,40 @@
       <style>
         :host {
           all: initial;
+          font-family:
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .harvester-shell {
           position: fixed;
           display: grid;
-          gap: 14px;
+          gap: 16px;
           width: 320px;
-          padding: 18px;
-          background:
-            radial-gradient(circle at top left, rgba(23, 144, 255, 0.18), transparent 40%),
-            linear-gradient(180deg, rgba(248, 241, 230, 0.98) 0%, rgba(239, 231, 216, 0.98) 100%);
-          color: #132033;
-          border: 1px solid rgba(19, 32, 51, 0.08);
-          border-radius: 20px;
-          box-shadow: 0 24px 54px rgba(19, 32, 51, 0.18);
+          padding: 16px;
+          background: #ffffff;
+          color: #111827;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          border-radius: 12px;
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.05),
+            0 10px 15px -3px rgba(0, 0, 0, 0.1),
+            0 4px 6px -2px rgba(0, 0, 0, 0.05);
           pointer-events: auto;
-          font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
-          backdrop-filter: blur(14px);
+          font-family:
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .harvester-shell[data-state="minimized"] {
           width: 164px;
-          border-radius: 18px;
+          border-radius: 12px;
           padding: 10px 12px;
         }
 
@@ -960,96 +971,95 @@
         }
 
         .harvester-eyebrow {
-          margin: 0 0 6px;
-          color: #82511d;
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.14em;
+          margin: 0 0 4px;
+          color: #6b7280;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
         }
 
         .harvester-title {
           margin: 0;
-          font-size: 26px;
-          line-height: 1;
-          font-weight: 900;
-          letter-spacing: -0.03em;
+          color: #111827;
+          font-size: 28px;
+          line-height: 0.95;
+          font-weight: 700;
+          letter-spacing: -0.04em;
         }
 
         .harvester-status-badge {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-height: 34px;
-          padding: 0 14px;
-          border-radius: 14px;
-          background: rgba(19, 32, 51, 0.08);
-          color: #27405c;
-          font-size: 12px;
-          font-weight: 800;
+          min-height: 28px;
+          padding: 0 10px;
+          border-radius: 8px;
+          background: #f3f4f6;
+          color: #374151;
+          font-size: 11px;
+          font-weight: 600;
           letter-spacing: 0.05em;
           text-transform: uppercase;
+          border: 1px solid rgba(0, 0, 0, 0.08);
         }
 
         .harvester-status-badge[data-run-state="running"] {
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
-          color: #ffffff;
-          box-shadow: 0 10px 24px rgba(10, 102, 194, 0.28);
+          background: rgba(0, 102, 255, 0.1);
+          color: #0066ff;
         }
 
         .harvester-status-badge[data-run-state="stopping"] {
-          background: linear-gradient(135deg, #ef8c24 0%, #ffb648 100%);
-          color: #ffffff;
+          background: rgba(245, 158, 11, 0.12);
+          color: #b45309;
         }
 
         .harvester-status-badge[data-run-state="completed"] {
-          background: linear-gradient(135deg, #088f6a 0%, #15c994 100%);
-          color: #ffffff;
+          background: rgba(16, 185, 129, 0.12);
+          color: #047857;
         }
 
         .harvester-status-badge[data-run-state="unavailable"] {
-          background: rgba(178, 47, 47, 0.12);
-          color: #8d2727;
+          background: rgba(239, 68, 68, 0.1);
+          color: #b91c1c;
         }
 
         .harvester-minimize {
           border: 0;
           border-radius: 14px;
-          min-width: 34px;
-          height: 34px;
-          background: rgba(10, 102, 194, 0.12);
-          color: #0a66c2;
-          font-size: 20px;
+          min-width: 28px;
+          height: 28px;
+          background: #f3f4f6;
+          color: #374151;
+          font-size: 18px;
           line-height: 1;
-          font-weight: 700;
+          font-weight: 600;
           cursor: pointer;
+          border: 1px solid rgba(0, 0, 0, 0.08);
         }
 
         .harvester-body {
           display: grid;
-          gap: 14px;
+          gap: 12px;
         }
 
         .harvester-hero,
         .harvester-activity {
           display: grid;
-          gap: 10px;
-          padding: 18px;
-          border: 1px solid rgba(19, 32, 51, 0.08);
-          border-radius: 18px;
-          background:
-            linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 238, 0.88)),
-            linear-gradient(180deg, #ffffff 0%, #f7f0e5 100%);
-          box-shadow: 0 20px 40px rgba(19, 32, 51, 0.12);
+          gap: 8px;
+          padding: 16px;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          background: #ffffff;
         }
 
         .harvester-hero-label,
         .harvester-activity-label,
         .harvester-metric-label {
-          color: #5d7290;
+          color: #6b7280;
           font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.14em;
+          font-weight: 600;
+          letter-spacing: 0.05em;
           text-transform: uppercase;
         }
 
@@ -1061,29 +1071,48 @@
         }
 
         .harvester-hero-count,
+        .harvester-hero-target,
+        .harvester-reposts,
+        .harvester-mode,
+        .harvester-wait-count,
+        .harvester-activity-log li,
+        .harvester-target {
+          font-family:
+            "JetBrains Mono",
+            "SF Mono",
+            "Roboto Mono",
+            Menlo,
+            Monaco,
+            Consolas,
+            monospace;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .harvester-hero-count,
         .harvester-hero-target {
-          font-weight: 900;
+          font-weight: 700;
           letter-spacing: -0.05em;
         }
 
         .harvester-hero-count {
-          font-size: 56px;
+          font-size: 52px;
         }
 
         .harvester-hero-target {
           font-size: 28px;
-          color: #5d7290;
+          color: #9ca3af;
           padding-bottom: 6px;
         }
 
         .harvester-hero-separator {
           font-size: 28px;
-          color: rgba(19, 32, 51, 0.28);
+          color: #9ca3af;
           padding-bottom: 6px;
         }
 
         .harvester-status {
-          color: #40546f;
+          margin: 0;
+          color: #6b7280;
           font-size: 15px;
           line-height: 1.5;
         }
@@ -1104,37 +1133,44 @@
         .harvester-metric-card {
           display: grid;
           gap: 6px;
-          padding: 12px 14px;
-          border-radius: 14px;
-          background: rgba(255, 255, 255, 0.72);
-          border: 1px solid rgba(19, 32, 51, 0.08);
+          padding: 12px;
+          border-radius: 8px;
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
         }
 
         .harvester-metric-value,
         .harvester-reposts,
         .harvester-mode,
         .harvester-wait-count {
+          margin: 0;
+          color: #111827;
           font-size: 18px;
           line-height: 1.1;
           letter-spacing: -0.03em;
-          font-weight: 800;
+          font-weight: 500;
         }
 
         .harvester-preset {
           border: 0;
-          border-radius: 16px;
+          border-radius: 8px;
           padding: 10px 14px;
-          background: rgba(19, 32, 51, 0.08);
-          color: #203247;
+          background: #f3f4f6;
+          color: #111827;
           cursor: pointer;
-          font-size: 15px;
-          font-weight: 800;
+          font-size: 13px;
+          font-weight: 500;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          transition:
+            background-color 120ms ease,
+            color 120ms ease,
+            border-color 120ms ease;
         }
 
         .harvester-preset.is-active {
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          background: #0066ff;
           color: #ffffff;
-          box-shadow: 0 10px 24px rgba(10, 102, 194, 0.22);
+          border-color: #0066ff;
         }
 
         .harvester-target-row {
@@ -1144,56 +1180,69 @@
 
         .harvester-label {
           display: grid;
-          gap: 6px;
+          gap: 4px;
           margin: 0;
-          color: #43576b;
-          font-size: 12px;
-          font-weight: 800;
+          color: #6b7280;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
         }
 
         .harvester-target {
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid rgba(19, 32, 51, 0.16);
-          border-radius: 14px;
-          padding: 14px 16px;
-          background: rgba(255, 255, 255, 0.88);
-          color: #132033;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          border-radius: 8px;
+          padding: 12px 14px;
+          background: #ffffff;
+          color: #111827;
           font-size: 22px;
-          font-weight: 900;
-          letter-spacing: -0.03em;
+          font-weight: 700;
+          letter-spacing: -0.04em;
         }
 
         .harvester-button {
           border: 0;
-          border-radius: 16px;
-          padding: 14px 16px;
+          border-radius: 8px;
+          padding: 12px 14px;
           cursor: pointer;
-          font-size: 15px;
-          font-weight: 800;
+          font-size: 13px;
+          font-weight: 500;
+          transition:
+            background-color 120ms ease,
+            color 120ms ease,
+            border-color 120ms ease;
+          border: 1px solid rgba(0, 0, 0, 0.08);
         }
 
         .harvester-start {
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          background: #0066ff;
           color: #ffffff;
-          box-shadow: 0 14px 30px rgba(10, 102, 194, 0.25);
+          border-color: #0066ff;
         }
 
         .harvester-stop {
-          background: rgba(19, 32, 51, 0.1);
-          color: #203247;
+          background: #f3f4f6;
+          color: #111827;
         }
 
         .harvester-export {
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+          background: #0066ff;
           color: #ffffff;
-          box-shadow: 0 14px 30px rgba(10, 102, 194, 0.25);
+          border-color: #0066ff;
         }
 
         .harvester-button:disabled,
         .harvester-preset:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+
+        .harvester-button:not(:disabled):hover,
+        .harvester-preset:not(:disabled):hover,
+        .harvester-minimize:hover {
+          filter: brightness(0.95);
         }
 
         .harvester-feedback {
@@ -1210,22 +1259,23 @@
         }
 
         .harvester-activity-log li {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          color: #31465f;
-          font-size: 13px;
-          line-height: 1.4;
+          display: grid;
+          grid-template-columns: 6px 1fr;
+          align-items: start;
+          gap: 8px;
+          color: #374151;
+          font-size: 12px;
+          line-height: 1.5;
+          font-weight: 450;
         }
 
         .harvester-activity-log li::before {
           content: "";
-          width: 8px;
-          height: 8px;
-          border-radius: 4px;
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
-          box-shadow: 0 0 0 4px rgba(10, 102, 194, 0.12);
-          flex: 0 0 auto;
+          width: 6px;
+          height: 6px;
+          margin-top: 6px;
+          border-radius: 999px;
+          background: #0066ff;
         }
 
         .harvester-chip {
@@ -1235,15 +1285,19 @@
           gap: 8px;
           width: 100%;
           border: 0;
-          border-radius: 18px;
+          border-radius: 8px;
           padding: 12px 14px;
-          background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
-          color: #ffffff;
+          background: #ffffff;
+          color: #111827;
           cursor: pointer;
           font-size: 13px;
-          font-weight: 800;
+          font-weight: 600;
           letter-spacing: 0.02em;
-          box-shadow: 0 18px 32px rgba(10, 102, 194, 0.28);
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.05),
+            0 10px 15px -3px rgba(0, 0, 0, 0.1),
+            0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         .harvester-chip-label {
@@ -1256,9 +1310,8 @@
           content: "";
           width: 8px;
           height: 8px;
-          border-radius: 4px;
-          background: rgba(255, 255, 255, 0.82);
-          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.16);
+          border-radius: 999px;
+          background: #0066ff;
         }
 
         .harvester-chip-count {
@@ -1267,8 +1320,9 @@
           justify-content: center;
           min-width: 28px;
           padding: 2px 8px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          background: #f3f4f6;
+          color: #111827;
         }
 
         .harvester-shell[data-state="minimized"] .harvester-header,

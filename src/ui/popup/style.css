@@ -1,22 +1,27 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
 html,
 body {
   margin: 0;
   padding: 0;
   min-width: 340px;
-  background:
-    radial-gradient(circle at top left, rgba(18, 142, 255, 0.18), transparent 36%),
-    linear-gradient(180deg, #f7f1e7 0%, #efe7d8 100%);
-  color: #132033;
-  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  background: #fafafa;
+  color: #111827;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 
 body {
-  padding: 18px;
+  padding: 16px;
 }
 
 .popup-shell {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .popup-header {
@@ -27,79 +32,105 @@ body {
 }
 
 .eyebrow {
-  margin: 0 0 6px;
-  color: #82511d;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  margin: 0 0 4px;
+  color: #6b7280;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: 26px;
-  line-height: 1;
-  letter-spacing: -0.03em;
+  color: #111827;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 28px;
+  line-height: 0.95;
+  font-weight: 700;
+  letter-spacing: -0.04em;
 }
 
 .status-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 14px;
-  background: rgba(19, 32, 51, 0.08);
-  color: #27405c;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f3f4f6;
+  color: #374151;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .status-badge[data-run-state="running"] {
-  background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
-  color: #ffffff;
-  box-shadow: 0 10px 24px rgba(10, 102, 194, 0.28);
+  background: rgba(0, 102, 255, 0.1);
+  color: #0066ff;
 }
 
 .status-badge[data-run-state="stopping"] {
-  background: linear-gradient(135deg, #ef8c24 0%, #ffb648 100%);
-  color: #ffffff;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
 }
 
 .status-badge[data-run-state="completed"] {
-  background: linear-gradient(135deg, #088f6a 0%, #15c994 100%);
-  color: #ffffff;
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
 }
 
 .status-badge[data-run-state="unavailable"] {
-  background: rgba(178, 47, 47, 0.12);
-  color: #8d2727;
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
 }
 
 .hero-panel,
 .activity-panel {
-  padding: 18px;
-  border: 1px solid rgba(19, 32, 51, 0.08);
-  border-radius: 18px;
-  background:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 238, 0.88)),
-    linear-gradient(180deg, #ffffff 0%, #f7f0e5 100%);
-  box-shadow: 0 20px 40px rgba(19, 32, 51, 0.12);
-}
-
-.hero-panel {
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .hero-label,
-.section-label {
-  color: #5d7290;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+.section-label,
+.meta-label,
+.field span {
+  color: #6b7280;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -111,30 +142,44 @@ h1 {
 }
 
 .hero-value,
-.hero-target {
-  font-weight: 900;
-  letter-spacing: -0.05em;
+.hero-target,
+.meta-value,
+.activity-log li {
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "Roboto Mono",
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .hero-value {
-  font-size: 56px;
+  color: #111827;
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
 }
 
 .hero-target {
+  color: #9ca3af;
   font-size: 28px;
-  color: #5d7290;
+  font-weight: 700;
+  letter-spacing: -0.05em;
   padding-bottom: 6px;
 }
 
 .hero-separator {
+  color: #9ca3af;
   font-size: 28px;
-  color: rgba(19, 32, 51, 0.28);
   padding-bottom: 6px;
 }
 
 .status-copy {
   margin: 0;
-  color: #40546f;
+  color: #6b7280;
   font-size: 15px;
   line-height: 1.5;
 }
@@ -142,42 +187,37 @@ h1 {
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .meta-card {
   display: grid;
   gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(19, 32, 51, 0.08);
-}
-
-.meta-label {
-  color: #667991;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .meta-value {
+  color: #111827;
   font-size: 18px;
   line-height: 1.1;
+  font-weight: 500;
   letter-spacing: -0.03em;
 }
 
-.preset-section {
+.preset-section,
+.activity-panel {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .preset-row,
 .control-row,
 .action-row {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .preset-row {
@@ -187,33 +227,40 @@ h1 {
 .preset-button,
 .primary-button,
 .secondary-button {
-  border: 0;
-  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 15px;
-  font-weight: 800;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 13px;
+  font-weight: 500;
   transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    filter 120ms ease;
 }
 
 .preset-button:hover,
 .primary-button:hover,
 .secondary-button:hover {
-  transform: translateY(-1px);
+  filter: brightness(0.95);
 }
 
 .preset-button {
   padding: 10px 14px;
-  background: rgba(19, 32, 51, 0.08);
-  color: #203247;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 .preset-button.is-active {
-  background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+  background: #0066ff;
   color: #ffffff;
-  box-shadow: 0 10px 24px rgba(10, 102, 194, 0.22);
+  border-color: #0066ff;
 }
 
 .control-row {
@@ -223,45 +270,46 @@ h1 {
 
 .field {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
-  color: #43576b;
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .field input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid rgba(19, 32, 51, 0.16);
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.88);
-  color: #132033;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
+  color: #111827;
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "Roboto Mono",
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
   font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
 }
 
 .primary-button,
 .secondary-button {
-  padding: 14px 16px;
+  padding: 12px 14px;
 }
 
 .primary-button {
-  background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
+  background: #0066ff;
   color: #ffffff;
-  box-shadow: 0 14px 30px rgba(10, 102, 194, 0.25);
+  border-color: #0066ff;
 }
 
 .secondary-button {
-  background: rgba(19, 32, 51, 0.1);
-  color: #203247;
-}
-
-.activity-panel {
-  display: grid;
-  gap: 10px;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 .activity-header {
@@ -279,29 +327,29 @@ h1 {
 }
 
 .activity-log li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #31465f;
-  font-size: 13px;
-  line-height: 1.4;
+  display: grid;
+  grid-template-columns: 6px 1fr;
+  align-items: start;
+  column-gap: 8px;
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 450;
 }
 
 .activity-log li::before {
   content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #0a66c2 0%, #1790ff 100%);
-  box-shadow: 0 0 0 4px rgba(10, 102, 194, 0.12);
-  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: #0066ff;
 }
 
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+  filter: none;
 }
 
 .sr-only {

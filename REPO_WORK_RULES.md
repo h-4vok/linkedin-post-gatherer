@@ -104,7 +104,7 @@ Recommended local order before commit:
 
 ## Completion Notification Rule
 
-- When a task is completed, send a Windows system notification with the exact message `Codex: Tarea completada`.
+- When a task is completed, send a Windows system notification with the exact message `linkedin-post-gathered: Tarea terminada`.
 
 ## Repo Conventions Worth Preserving
 
