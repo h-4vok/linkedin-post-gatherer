@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
   lastExportAt: "collector.lastExportAt",
   panelPosition: "collector.panel.position",
   panelMinimized: "collector.panel.minimized",
+  authorCache: "collector.author-cache.v1",
 };
 
 export const MESSAGE_TYPES = {
@@ -43,7 +44,10 @@ export const MESSAGE_TYPES = {
   crawlerCommand: "collector/crawler-command",
   crawlerProgress: "collector/crawler-progress",
   log: "collector/log",
-  exportRequest: "collector/export-request",
+  exportRawRequest: "collector/export-raw-request",
+  exportEnrichedRequest: "collector/export-enriched-request",
+  enrichmentCancelRequest: "collector/enrichment-cancel-request",
+  profileExtractRequest: "collector/profile-extract-request",
   exportResult: "collector/export-result",
 };
 
@@ -57,4 +61,12 @@ export const STATUS_TEXT = {
   waitingForMore: "Waiting for more posts to load.",
   stalled: "Feed exhausted or stalled.",
   unavailable: "LinkedIn feed container not found on this view.",
+};
+
+export const ENRICHMENT_STATES = {
+  idle: "idle",
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
 };

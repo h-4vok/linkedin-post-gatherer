@@ -15,8 +15,17 @@ flowchart TD
     K --> L[Update popup counter]
     L --> M{Limit reached?}
     M -->|No| C
-    M -->|Yes| N[Build final JSON payload]
-    N --> O[Download linkedin_dump_[date].json]
+    M -->|Yes| N{Export mode}
+    N -->|Raw| O[Build raw JSON payload]
+    O --> P[Download linkedin_dump_[date].json]
+    N -->|Enriched| Q[Resolve unique authors]
+    Q --> R[Reuse local author cache]
+    R --> S[Open one LinkedIn profile tab at a time]
+    S --> T[Extract role and followers]
+    T --> U[Classify author weight]
+    U --> V[Update enrichment progress]
+    V --> W[Build enriched JSON payload]
+    W --> X[Download linkedin_dump_[date]_enriched.json]
 ```
 
 ## Notes
@@ -24,4 +33,5 @@ flowchart TD
 - Collection should be resumable and should not duplicate previously captured posts.
 - Failures in extraction should be observable and should not corrupt stored results.
 - Export is local-only in the current phase.
+- Enriched export is sequential and exposes explicit post/author progress while the raw batch remains available immediately.
 - Non-organic feed items are excluded before they enter normalized storage.

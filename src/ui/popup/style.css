@@ -254,7 +254,8 @@ h1 {
 
 .preset-row,
 .control-row,
-.action-row {
+.action-row,
+.enrichment-grid {
   display: grid;
   gap: 8px;
 }
@@ -307,6 +308,10 @@ h1 {
   align-items: end;
 }
 
+.action-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .field {
   display: grid;
   gap: 4px;
@@ -357,6 +362,24 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.enrichment-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.mini-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .activity-log {

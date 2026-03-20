@@ -71,10 +71,31 @@
         <button id="stop-button" type="button" class="secondary-button">
           Stop
         </button>
-        <button id="export-button" type="button" class="primary-button">
-          Export
+        <button id="export-raw-button" type="button" class="secondary-button">
+          Export raw
+        </button>
+        <button id="export-enriched-button" type="button" class="primary-button">
+          Export enriched
         </button>
       </div>
+
+      <section class="activity-panel">
+        <div class="activity-header">
+          <span class="section-label">Enrichment</span>
+          <span id="enrichment-status" class="mini-badge">Idle</span>
+        </div>
+        <div class="enrichment-grid">
+          <article class="meta-card">
+            <span class="meta-label">Posts</span>
+            <strong id="enrichment-posts" class="meta-value">0 / 0</strong>
+          </article>
+          <article class="meta-card">
+            <span class="meta-label">Authors</span>
+            <strong id="enrichment-authors" class="meta-value">0 / 0</strong>
+          </article>
+        </div>
+        <p id="enrichment-current" class="status-copy">No enrichment in progress.</p>
+      </section>
 
       <section class="activity-panel">
         <div class="activity-header">

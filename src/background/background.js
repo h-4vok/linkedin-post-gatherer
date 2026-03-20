@@ -1,4 +1,5 @@
 import {
+  ENRICHMENT_STATES,
   MESSAGE_TYPES,
   NO_PROGRESS_LIMIT,
   RUN_STATES,
@@ -7,18 +8,35 @@ import {
   STORAGE_KEYS,
 } from "../shared/constants.js";
 import {
+  buildAuthorCacheKey,
+  buildAuthorSignalPatch,
+  normalizeAuthorName,
+} from "../shared/author-weight.js";
+import {
+  toEnrichedExportItem,
+  toRawExportItem,
+} from "../shared/export.js";
+import {
   applyCrawlerProgress,
+  cancelEnrichment,
   clearTabState,
+  completeEnrichment,
   ensureHydratedState,
+  failEnrichment,
   finalizeStopCrawler,
+  getEnrichedItems,
   getSerializableState,
   markFeedReady,
   mergeNewItems,
   persistState,
   requestStopCrawler,
   setTargetCount,
+  startEnrichment,
   startCrawler,
+  updateEnrichmentProgress,
 } from "../shared/state.js";
+
+const activeEnrichments = new Map();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearTabState(tabId);
@@ -46,7 +64,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleMessage(message, sender) {
   const tabId = resolveTabId(message, sender);
 
-  if (tabId == null && message?.type !== MESSAGE_TYPES.exportRequest) {
+  if (
+    tabId == null &&
+    message?.type !== MESSAGE_TYPES.exportRawRequest &&
+    message?.type !== MESSAGE_TYPES.exportEnrichedRequest
+  ) {
     return { ok: false, error: "tabId is required" };
   }
 
@@ -200,44 +222,105 @@ async function handleMessage(message, sender) {
       return { ok: true };
     }
 
-    case MESSAGE_TYPES.exportRequest: {
+    case MESSAGE_TYPES.exportRawRequest: {
       if (tabId == null) {
         return { ok: false, error: "tabId is required for export" };
       }
 
       const state = getSerializableState(tabId);
-      logServiceWorkerEvent("export-requested", {
+      logServiceWorkerEvent("raw-export-requested", {
         tabId,
         count: state.count,
       });
-      const filename = buildExportFilename();
-      const json = JSON.stringify(state.items, null, 2);
-      const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
-
-      const downloadId = await chrome.downloads.download({
-        url: dataUrl,
-        filename,
-        saveAs: true,
+      const exportResult = await downloadJsonExport({
+        items: state.items.map(toRawExportItem),
+        filename: buildExportFilename("raw"),
       });
 
-      const exportResult = {
-        ok: true,
-        downloadId,
-        filename,
-        count: state.count,
-      };
-
-      logServiceWorkerEvent("export-completed", {
+      logServiceWorkerEvent("raw-export-completed", {
         tabId,
-        filename,
+        filename: exportResult.filename,
         count: state.count,
-      });
-
-      await chrome.storage.local.set({
-        [STORAGE_KEYS.lastExportAt]: new Date().toISOString(),
       });
 
       return { type: MESSAGE_TYPES.exportResult, ...exportResult };
+    }
+
+    case MESSAGE_TYPES.exportEnrichedRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for export" };
+      }
+
+      const state = getSerializableState(tabId);
+
+      if (
+        state.runState === RUN_STATES.running ||
+        state.runState === RUN_STATES.stopping
+      ) {
+        return {
+          ok: false,
+          error: "Stop the crawler before running enriched export.",
+        };
+      }
+
+      if (!state.count) {
+        return { ok: false, error: "No posts available to enrich." };
+      }
+
+      if (
+        state.enrichment?.status === ENRICHMENT_STATES.completed &&
+        state.enrichment?.readyForDownload
+      ) {
+        const enrichedItems = getEnrichedItems(tabId).map(toEnrichedExportItem);
+        const exportResult = await downloadJsonExport({
+          items: enrichedItems,
+          filename: buildExportFilename("enriched"),
+        });
+        logServiceWorkerEvent("enriched-export-completed", {
+          tabId,
+          filename: exportResult.filename,
+          count: enrichedItems.length,
+        });
+        return { type: MESSAGE_TYPES.exportResult, ...exportResult, ready: true };
+      }
+
+      if (activeEnrichments.has(tabId)) {
+        return {
+          ok: true,
+          started: false,
+          enrichment: state.enrichment,
+        };
+      }
+
+      const startedState = await startEnrichment(tabId, {
+        totalPosts: state.items.length,
+        totalAuthors: countDistinctAuthors(state.items),
+        lastMessage: "Starting author enrichment.",
+      });
+      await broadcastCountUpdated(tabId, startedState);
+      void runEnrichment(tabId);
+      return {
+        ok: true,
+        started: true,
+        enrichment: startedState.enrichment,
+      };
+    }
+
+    case MESSAGE_TYPES.enrichmentCancelRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required" };
+      }
+
+      const activeRun = activeEnrichments.get(tabId);
+
+      if (!activeRun) {
+        return { ok: true, state: getSerializableState(tabId) };
+      }
+
+      activeRun.cancelled = true;
+      const state = await cancelEnrichment(tabId, "Enrichment cancellation requested.");
+      await broadcastCountUpdated(tabId, state);
+      return { ok: true, state };
     }
 
     default:
@@ -256,6 +339,7 @@ async function broadcastCountUpdated(tabId, state) {
     targetCount: state.targetCount,
     noProgressCycles: state.noProgressCycles,
     stalledWaitCount: state.stalledWaitCount,
+    enrichment: state.enrichment,
   };
 
   try {
@@ -271,8 +355,9 @@ async function broadcastCountUpdated(tabId, state) {
   }
 }
 
-function buildExportFilename(date = new Date()) {
-  return `linkedin_dump_${date.toISOString().slice(0, 10)}.json`;
+function buildExportFilename(mode, date = new Date()) {
+  const suffix = mode === "enriched" ? "_enriched" : "";
+  return `linkedin_dump_${date.toISOString().slice(0, 10)}${suffix}.json`;
 }
 
 function resolveTabId(message, sender) {
@@ -316,4 +401,260 @@ async function sendCrawlerCommand(tabId, action, payload = {}) {
 
 function logServiceWorkerEvent(event, payload = {}) {
   console.log("[harvester][service-worker]", event, payload);
+}
+
+async function runEnrichment(tabId) {
+  const run = { cancelled: false };
+  activeEnrichments.set(tabId, run);
+
+  try {
+    const state = getSerializableState(tabId);
+    const enrichedItems = state.items.map((item) => ({ ...item }));
+    const authorBuckets = buildAuthorBuckets(enrichedItems);
+
+    let processedAuthors = 0;
+    let processedPosts = 0;
+
+    for (const bucket of authorBuckets) {
+      if (run.cancelled) {
+        const cancelledState = await cancelEnrichment(
+          tabId,
+          "Enrichment cancelled.",
+        );
+        await broadcastCountUpdated(tabId, cancelledState);
+        return;
+      }
+
+      const nextPostIndex = processedPosts + 1;
+      let progressState = await updateEnrichmentProgress(tabId, {
+        currentAuthor: bucket.author,
+        currentPostIndex: nextPostIndex,
+        lastMessage: `Resolving ${bucket.author}.`,
+      });
+      await broadcastCountUpdated(tabId, progressState);
+
+      const authorData = await resolveAuthorData(bucket, tabId);
+
+      for (const itemIndex of bucket.indexes) {
+        enrichedItems[itemIndex] = {
+          ...enrichedItems[itemIndex],
+          ...buildAuthorSignalPatch(authorData),
+        };
+      }
+
+      processedAuthors += 1;
+      processedPosts += bucket.indexes.length;
+
+      progressState = await updateEnrichmentProgress(tabId, {
+        processedAuthors,
+        processedPosts,
+        currentAuthor: bucket.author,
+        currentPostIndex: processedPosts,
+        lastMessage:
+          authorData.source === "cache"
+            ? `Cache hit for ${bucket.author}.`
+            : `Profile resolved for ${bucket.author}.`,
+      });
+      await broadcastCountUpdated(tabId, progressState);
+    }
+
+    const completedState = await completeEnrichment(
+      tabId,
+      enrichedItems,
+      "Enriched export ready for download.",
+    );
+    await broadcastCountUpdated(tabId, completedState);
+  } catch (error) {
+    const failedState = await failEnrichment(
+      tabId,
+      error.message || "Enrichment failed.",
+    );
+    await broadcastCountUpdated(tabId, failedState);
+    logServiceWorkerEvent("enrichment-failed", {
+      tabId,
+      error: error.message,
+    });
+  } finally {
+    activeEnrichments.delete(tabId);
+  }
+}
+
+function buildAuthorBuckets(items) {
+  const buckets = new Map();
+
+  items.forEach((item, index) => {
+    const cacheKey = buildAuthorCacheKey({
+      profileUrl: item.author_profile_url,
+      author: item.author,
+    });
+    const fallbackKey = `item:${index}`;
+    const mapKey = cacheKey || fallbackKey;
+
+    if (!buckets.has(mapKey)) {
+      buckets.set(mapKey, {
+        author: item.author || `Author ${index + 1}`,
+        profileUrl: item.author_profile_url || null,
+        cacheKey,
+        fallbackAuthorKey: buildAuthorCacheKey({ author: item.author }),
+        indexes: [],
+      });
+    }
+
+    buckets.get(mapKey).indexes.push(index);
+  });
+
+  return Array.from(buckets.values());
+}
+
+function countDistinctAuthors(items) {
+  return buildAuthorBuckets(items).length;
+}
+
+async function resolveAuthorData(bucket, tabId) {
+  const cacheEntry = await findAuthorCacheEntry(bucket);
+
+  if (cacheEntry) {
+    logServiceWorkerEvent("author-cache-hit", {
+      tabId,
+      author: bucket.author,
+      cacheKey: cacheEntry.cacheKey,
+    });
+    return { ...cacheEntry.entry, source: "cache" };
+  }
+
+  logServiceWorkerEvent("author-cache-miss", {
+    tabId,
+    author: bucket.author,
+    profileUrl: bucket.profileUrl,
+  });
+
+  if (!bucket.profileUrl) {
+    return {
+      role: null,
+      followers: null,
+      source: "fallback",
+    };
+  }
+
+  const profileSignals = await extractProfileSignals(bucket.profileUrl);
+  const entry = {
+    author: bucket.author,
+    normalized_author: normalizeAuthorName(bucket.author),
+    profile_url: bucket.profileUrl,
+    role: profileSignals.role,
+    followers: profileSignals.followers,
+    resolved_at: new Date().toISOString(),
+  };
+
+  await upsertAuthorCacheEntry(bucket, {
+    ...entry,
+    ...buildAuthorSignalPatch(entry),
+  });
+
+  return { ...entry, source: "profile" };
+}
+
+async function findAuthorCacheEntry(bucket) {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.authorCache);
+  const cache = stored[STORAGE_KEYS.authorCache] || {};
+
+  if (bucket.cacheKey && cache[bucket.cacheKey]) {
+    return { cacheKey: bucket.cacheKey, entry: cache[bucket.cacheKey] };
+  }
+
+  if (bucket.fallbackAuthorKey && cache[bucket.fallbackAuthorKey]) {
+    return {
+      cacheKey: bucket.fallbackAuthorKey,
+      entry: cache[bucket.fallbackAuthorKey],
+    };
+  }
+
+  return null;
+}
+
+async function upsertAuthorCacheEntry(bucket, entry) {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.authorCache);
+  const cache = stored[STORAGE_KEYS.authorCache] || {};
+
+  if (bucket.cacheKey) {
+    cache[bucket.cacheKey] = entry;
+  }
+
+  if (bucket.fallbackAuthorKey) {
+    cache[bucket.fallbackAuthorKey] = entry;
+  }
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.authorCache]: cache,
+  });
+}
+
+async function extractProfileSignals(profileUrl) {
+  const profileTab = await chrome.tabs.create({
+    url: profileUrl,
+    active: false,
+  });
+
+  try {
+    await waitForTabLoad(profileTab.id);
+    await wait(800);
+
+    const response = await chrome.tabs.sendMessage(profileTab.id, {
+      type: MESSAGE_TYPES.profileExtractRequest,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Profile extraction failed.");
+    }
+
+    return response.profile;
+  } finally {
+    await chrome.tabs.remove(profileTab.id).catch(() => {});
+  }
+}
+
+function waitForTabLoad(tabId) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+      reject(new Error("Timed out waiting for profile tab."));
+    }, 20000);
+
+    function handleUpdated(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") {
+        return;
+      }
+
+      clearTimeout(timeoutId);
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+      resolve();
+    }
+
+    chrome.tabs.onUpdated.addListener(handleUpdated);
+  });
+}
+
+function wait(durationMs) {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
+}
+
+async function downloadJsonExport({ items, filename }) {
+  const json = JSON.stringify(items, null, 2);
+  const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+  const downloadId = await chrome.downloads.download({
+    url: dataUrl,
+    filename,
+    saveAs: true,
+  });
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.lastExportAt]: new Date().toISOString(),
+  });
+
+  return {
+    ok: true,
+    downloadId,
+    filename,
+    count: items.length,
+  };
 }
