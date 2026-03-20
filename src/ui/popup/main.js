@@ -1,4 +1,5 @@
 import {
+  ENRICHMENT_STATES,
   MESSAGE_TYPES,
   RUN_STATES,
   STALLED_WAIT_LIMIT,
@@ -21,9 +22,14 @@ const statusBadgeElement = document.querySelector("#status-badge");
 const targetInput = document.querySelector("#target-count");
 const startButton = document.querySelector("#start-button");
 const stopButton = document.querySelector("#stop-button");
-const exportButton = document.querySelector("#export-button");
+const exportRawButton = document.querySelector("#export-raw-button");
+const exportEnrichedButton = document.querySelector("#export-enriched-button");
 const exportFeedback = document.querySelector("#export-feedback");
 const activityLog = document.querySelector("#activity-log");
+const enrichmentStatusElement = document.querySelector("#enrichment-status");
+const enrichmentPostsElement = document.querySelector("#enrichment-posts");
+const enrichmentAuthorsElement = document.querySelector("#enrichment-authors");
+const enrichmentCurrentElement = document.querySelector("#enrichment-current");
 const presetButtons = Array.from(
   document.querySelectorAll("[data-target-preset]"),
 );
@@ -35,6 +41,7 @@ let currentRunState = RUN_STATES.idle;
 let currentStalledWaitCount = 0;
 let currentStatus = "Waiting for LinkedIn feed...";
 let activityItems = [];
+let currentEnrichment = createEmptyEnrichmentState();
 
 void hydratePopup();
 
@@ -53,6 +60,7 @@ chrome.runtime.onMessage.addListener((message) => {
   const nextStatus = message.status || "Idle";
   const nextTargetCount = message.targetCount || TARGET_COUNT_DEFAULT;
   const nextStalledWaitCount = message.stalledWaitCount || 0;
+  const nextEnrichment = message.enrichment || createEmptyEnrichmentState();
 
   if (nextCount > currentCount) {
     pushActivity(`Captured ${nextCount - currentCount} new posts.`);
@@ -77,6 +85,7 @@ chrome.runtime.onMessage.addListener((message) => {
   currentRunState = nextRunState;
   currentStalledWaitCount = nextStalledWaitCount;
   currentStatus = nextStatus;
+  currentEnrichment = nextEnrichment;
 
   renderCount(nextCount);
   renderRepostCount(nextRepostCount);
@@ -84,6 +93,7 @@ chrome.runtime.onMessage.addListener((message) => {
   renderStatus(nextStatus, nextRunState);
   renderTargetCount(nextTargetCount);
   renderControls(nextRunState);
+  renderEnrichment(nextEnrichment);
 });
 
 targetInput?.addEventListener("change", async () => {
@@ -175,14 +185,14 @@ stopButton?.addEventListener("click", async () => {
   }
 });
 
-exportButton?.addEventListener("click", async () => {
-  exportButton.disabled = true;
-  exportFeedback.textContent = "Preparing JSON export...";
-  pushActivity("Export requested.");
+exportRawButton?.addEventListener("click", async () => {
+  exportRawButton.disabled = true;
+  exportFeedback.textContent = "Preparing raw JSON export...";
+  pushActivity("Raw export requested.");
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.exportRequest,
+      type: MESSAGE_TYPES.exportRawRequest,
       tabId: activeTabId,
     });
 
@@ -196,7 +206,48 @@ exportButton?.addEventListener("click", async () => {
     exportFeedback.textContent = error.message;
     pushActivity(error.message);
   } finally {
-    exportButton.disabled = false;
+    exportRawButton.disabled = false;
+    renderEnrichment(currentEnrichment);
+  }
+});
+
+exportEnrichedButton?.addEventListener("click", async () => {
+  exportEnrichedButton.disabled = true;
+  exportFeedback.textContent =
+    currentEnrichment.readyForDownload
+      ? "Downloading enriched JSON..."
+      : "Starting author enrichment...";
+  pushActivity(
+    currentEnrichment.readyForDownload
+      ? "Enriched export download requested."
+      : "Enriched export requested.",
+  );
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.exportEnrichedRequest,
+      tabId: activeTabId,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Enriched export failed");
+    }
+
+    if (response?.ready) {
+      exportFeedback.textContent = `Downloaded ${response.filename}`;
+      pushActivity(`Downloaded ${response.filename}`);
+    } else if (response?.started) {
+      exportFeedback.textContent = "Author enrichment started.";
+      pushActivity("Author enrichment started.");
+    } else {
+      exportFeedback.textContent = "Author enrichment is still running.";
+      pushActivity("Author enrichment is still running.");
+    }
+  } catch (error) {
+    exportFeedback.textContent = error.message;
+    pushActivity(error.message);
+  } finally {
+    renderEnrichment(currentEnrichment);
   }
 });
 
@@ -211,7 +262,8 @@ async function hydratePopup() {
     renderStatus("No active browser tab.", RUN_STATES.unavailable);
     renderTargetCount(TARGET_COUNT_DEFAULT);
     renderControls(RUN_STATES.unavailable);
-    exportButton.disabled = true;
+    exportRawButton.disabled = true;
+    exportEnrichedButton.disabled = true;
     pushActivity("No active browser tab.");
     return;
   }
@@ -223,12 +275,12 @@ async function hydratePopup() {
 
   const state = response?.state || {};
 
-  exportButton.disabled = false;
   currentCount = state.count || 0;
   currentRepostCount = state.repostCount || 0;
   currentRunState = state.runState || RUN_STATES.idle;
   currentStalledWaitCount = state.stalledWaitCount || 0;
   currentStatus = state.status || "Waiting for LinkedIn feed...";
+  currentEnrichment = state.enrichment || createEmptyEnrichmentState();
 
   renderCount(currentCount);
   renderRepostCount(currentRepostCount);
@@ -236,6 +288,7 @@ async function hydratePopup() {
   renderStatus(currentStatus, currentRunState);
   renderTargetCount(state.targetCount || TARGET_COUNT_DEFAULT);
   renderControls(currentRunState);
+  renderEnrichment(currentEnrichment);
 
   if (currentRunState === RUN_STATES.running) {
     pushActivity("Crawler is currently running.");
@@ -303,6 +356,38 @@ function renderControls(runState) {
   }
   startButton.disabled = running || unavailable;
   stopButton.disabled = !running;
+  exportRawButton.disabled = unavailable || activeTabId == null;
+}
+
+function renderEnrichment(enrichment) {
+  currentEnrichment = {
+    ...createEmptyEnrichmentState(),
+    ...(enrichment || {}),
+  };
+
+  enrichmentStatusElement.textContent = formatEnrichmentStatus(
+    currentEnrichment.status,
+  );
+  enrichmentPostsElement.textContent = `${currentEnrichment.processedPosts} / ${currentEnrichment.totalPosts}`;
+  enrichmentAuthorsElement.textContent = `${currentEnrichment.processedAuthors} / ${currentEnrichment.totalAuthors}`;
+  enrichmentCurrentElement.textContent =
+    currentEnrichment.lastMessage ||
+    (currentEnrichment.currentAuthor
+      ? `Processing ${currentEnrichment.currentAuthor}.`
+      : "No enrichment in progress.");
+
+  if (currentEnrichment.readyForDownload) {
+    exportEnrichedButton.textContent = "Download enriched";
+    exportEnrichedButton.disabled = activeTabId == null;
+    return;
+  }
+
+  exportEnrichedButton.textContent =
+    currentEnrichment.status === ENRICHMENT_STATES.running
+      ? "Enriching..."
+      : "Export enriched";
+  exportEnrichedButton.disabled =
+    activeTabId == null || currentEnrichment.status === ENRICHMENT_STATES.running;
 }
 
 function pushActivity(message) {
@@ -353,4 +438,33 @@ function clampTargetCount(value) {
   }
 
   return Math.min(TARGET_COUNT_MAX, Math.max(TARGET_COUNT_MIN, parsed));
+}
+
+function formatEnrichmentStatus(status) {
+  switch (status) {
+    case ENRICHMENT_STATES.running:
+      return "Running";
+    case ENRICHMENT_STATES.completed:
+      return "Ready";
+    case ENRICHMENT_STATES.failed:
+      return "Failed";
+    case ENRICHMENT_STATES.cancelled:
+      return "Cancelled";
+    default:
+      return "Idle";
+  }
+}
+
+function createEmptyEnrichmentState() {
+  return {
+    status: ENRICHMENT_STATES.idle,
+    totalPosts: 0,
+    processedPosts: 0,
+    totalAuthors: 0,
+    processedAuthors: 0,
+    currentAuthor: null,
+    currentPostIndex: 0,
+    lastMessage: null,
+    readyForDownload: false,
+  };
 }

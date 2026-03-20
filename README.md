@@ -13,6 +13,7 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
 
 Collected post batches are scoped to the current browser tab/session. Persistent local storage is reserved for lightweight UI preferences such as the floating panel position.
+Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so repeated authors do not require opening their profile again on later runs.
 
 ## MVP Behavior
 
@@ -26,6 +27,8 @@ Collected post batches are scoped to the current browser tab/session. Persistent
 - Stop automatically at a user-defined accepted-post target with default `50` and supported range `1-200`
 - When LinkedIn stops yielding new accepted posts, pause for up to `5m` and retry multiple times before declaring the feed stalled
 - Export a local file named `linkedin_dump_[date].json`
+- Offer both `Export raw` for the current batch and `Export enriched` for a sequential author-enrichment pass with visible progress
+- Enrich author metadata with `author_role`, `author_followers`, and `author_weight`
 
 ## Expected Workflow
 
@@ -35,7 +38,7 @@ Collected post batches are scoped to the current browser tab/session. Persistent
 4. Press `Start` to begin crawler-driven scrolling and collection.
 5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
 6. Press `Stop` at any time or let the crawler stop automatically at the target.
-7. Export the final `JSON` payload for downstream manual use.
+7. Export the current raw batch immediately, or start enriched export and monitor post/author progress until the enriched `JSON` is ready.
 
 ## Standard Commands
 

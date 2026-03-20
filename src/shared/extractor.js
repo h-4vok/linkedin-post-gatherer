@@ -176,6 +176,46 @@ export function extractPostedTime(postElement) {
   return null;
 }
 
+export function extractAuthorProfileUrl(postElement, author) {
+  const anchors = Array.from(
+    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+  );
+  const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
+
+  for (const anchor of anchors) {
+    const href = anchor.getAttribute("href");
+    const anchorText = normalizeWhitespace(
+      [anchor.textContent || "", anchor.getAttribute("aria-label") || ""].join(
+        " ",
+      ),
+    ).toLowerCase();
+
+    if (!href) {
+      continue;
+    }
+
+    if (normalizedAuthor && anchorText.includes(normalizedAuthor)) {
+      try {
+        return new URL(href, window.location.origin).toString();
+      } catch {
+        return href;
+      }
+    }
+  }
+
+  const firstProfileAnchor = anchors[0]?.getAttribute("href");
+
+  if (!firstProfileAnchor) {
+    return null;
+  }
+
+  try {
+    return new URL(firstProfileAnchor, window.location.origin).toString();
+  } catch {
+    return firstProfileAnchor;
+  }
+}
+
 export function buildFingerprint(postElement, author) {
   const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
     0,
@@ -194,12 +234,16 @@ export function buildNormalizedItem(
   return {
     link: null,
     author,
+    author_profile_url: extractAuthorProfileUrl(postElement, author),
     reposted_by: repostMetadata.reposted_by,
     post_text: extractPostText(postElement),
     posted_time: extractPostedTime(postElement),
     is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),
+    author_role: null,
+    author_followers: null,
+    author_weight: "low",
     fingerprint: buildFingerprint(postElement, author),
   };
 }

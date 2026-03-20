@@ -1,0 +1,26 @@
+function pickExportFields(item) {
+  return {
+    link: item?.link || null,
+    author: item?.author || null,
+    reposted_by: item?.reposted_by || null,
+    post_text: item?.post_text || null,
+    posted_time: item?.posted_time || null,
+    is_repost: Boolean(item?.is_repost),
+    type: item?.type || "organic",
+    extracted_at: item?.extracted_at || null,
+  };
+}
+
+export function toRawExportItem(item) {
+  return pickExportFields(item);
+}
+
+export function toEnrichedExportItem(item) {
+  return {
+    ...pickExportFields(item),
+    author_role: item?.author_role || null,
+    author_followers:
+      typeof item?.author_followers === "number" ? item.author_followers : null,
+    author_weight: item?.author_weight || "low",
+  };
+}

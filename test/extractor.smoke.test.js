@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   extractAuthor,
+  extractAuthorProfileUrl,
   extractPostedTime,
   extractPostText,
   extractRepostMetadata,
@@ -17,6 +18,7 @@ const FEED_FIXTURE = `
     <div role="listitem" data-post-id="organic-1">
       <div>
         <p>Regular organic post</p>
+        <a href="https://www.linkedin.com/in/gonzalo-corbijn/">Gonzalo Corbijn</a>
         <span aria-hidden="true">
           Gonzalo Corbijn
           <span class="verified"></span>
@@ -116,6 +118,16 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[6])).toBe("Cruz Gamboa");
   });
 
+  it("extracts the author profile url when it is present in the post", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractAuthorProfileUrl(posts[0], "Gonzalo Corbijn")).toBe(
+      "https://www.linkedin.com/in/gonzalo-corbijn/",
+    );
+    expect(extractAuthorProfileUrl(posts[2], "Ada Lovelace")).toBeNull();
+  });
+
   it("detects repost metadata without misclassifying social suggestions", () => {
     const document = setupDocument();
     const posts = findPostElements(findFeedContainer(document));
@@ -164,6 +176,10 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(firstPass.skippedItems).toContain("missing-author");
     expect(firstPass.acceptedItems[0]).toMatchObject({
       author: "Gonzalo Corbijn",
+      author_profile_url: "https://www.linkedin.com/in/gonzalo-corbijn/",
+      author_role: null,
+      author_followers: null,
+      author_weight: "low",
       post_text: "Full organic text with a hidden ending.",
       posted_time: "4h",
     });

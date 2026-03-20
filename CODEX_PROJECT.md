@@ -27,7 +27,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 3. Exclude promoted posts, polls, and suggested content before capture.
 4. Extract raw post metadata into a stable normalized structure.
 5. Accumulate deduplicated results in local extension state.
-6. Expose progress in the popup UI and export a final `JSON` payload for downstream manual use.
+6. Expose progress in the popup UI and export either a raw or enriched `JSON` payload for downstream manual use.
 
 ## Product Boundaries
 
@@ -73,7 +73,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
 7. Background logic deduplicates and stores intermediate collection state in `chrome.storage.local`.
 8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`.
-9. When requested, export logic produces a local file named `linkedin_dump_[date].json`.
+9. When requested, export logic produces either a raw `linkedin_dump_[date].json` file or an enriched `linkedin_dump_[date]_enriched.json` file after sequential author enrichment.
 
 ## Core Operational Contracts
 
@@ -92,6 +92,10 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - `is_repost`
   - `type`
   - `extracted_at`
+- The enriched export extends each item with:
+  - `author_role`
+  - `author_followers`
+  - `author_weight`
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.
 - `post_text` should prefer the preloaded LinkedIn expandable text node so long posts can be captured without triggering UI expansion.

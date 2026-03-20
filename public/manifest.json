@@ -3,7 +3,7 @@
   "name": "LinkedIn Intelligence Harvester",
   "version": "0.1.0",
   "description": "Collects organic LinkedIn posts, extracts authors, and exports the current batch as JSON.",
-  "permissions": ["storage", "activeTab", "downloads"],
+  "permissions": ["storage", "activeTab", "downloads", "tabs"],
   "host_permissions": ["https://www.linkedin.com/*"],
   "background": {
     "service_worker": "assets/background.js",
@@ -16,7 +16,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*"],
-      "js": ["linkedin-content.js"],
+      "js": ["assets/linkedin-content.js"],
       "run_at": "document_idle"
     }
   ]
