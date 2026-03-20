@@ -103,7 +103,17 @@ export function createPanelMarkup() {
         </div>
         <div class="harvester-actions">
           <button class="harvester-button harvester-stop" type="button">Stop</button>
-          <button class="harvester-button harvester-export" type="button">Export</button>
+          <button class="harvester-button harvester-export-raw" type="button">Export raw</button>
+          <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
+        </div>
+        <div class="harvester-enrichment">
+          <p class="harvester-activity-label">Enrichment</p>
+          <div class="harvester-enrichment-grid">
+            <strong class="harvester-enrichment-status">Idle</strong>
+            <strong class="harvester-enrichment-posts">0 / 0 posts</strong>
+            <strong class="harvester-enrichment-authors">0 / 0 authors</strong>
+          </div>
+          <p class="harvester-feedback-copy">No enrichment in progress.</p>
         </div>
         <div class="harvester-activity">
           <p class="harvester-activity-label">Activity</p>
