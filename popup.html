@@ -10,101 +10,56 @@
       <header class="popup-header">
         <div>
           <p class="eyebrow">LinkedIn Intelligence Harvester</p>
-          <h1>Harvester Console</h1>
+          <h1>Extension Settings</h1>
         </div>
-        <span id="status-badge" class="status-badge" data-run-state="idle"
-          >Idle</span
-        >
       </header>
 
-      <section class="hero-panel">
-        <p class="hero-label">Accepted posts</p>
-        <div class="hero-metric">
-          <span id="hero-count" class="hero-value">0</span>
-          <span class="hero-separator">/</span>
-          <span id="hero-target" class="hero-target">50</span>
+      <section class="info-panel">
+        <p class="section-label">Operator note</p>
+        <p class="status-copy">
+          Run control, counters and export stay in the injected LinkedIn panel.
+          This popup is now reserved for configuration and debug reset only.
+        </p>
+      </section>
+
+      <section class="activity-panel">
+        <div class="activity-header">
+          <span class="section-label">Gemini setup</span>
         </div>
-        <p id="status" class="status-copy">Waiting for LinkedIn feed...</p>
-      </section>
-
-      <section class="meta-grid" aria-label="Crawler metrics">
-        <article class="meta-card">
-          <span class="meta-label">Reposts</span>
-          <strong id="repost-count" class="meta-value">0</strong>
-        </article>
-        <article class="meta-card">
-          <span class="meta-label">Mode</span>
-          <strong id="mode-value" class="meta-value">Idle</strong>
-        </article>
-        <article class="meta-card">
-          <span class="meta-label">Long wait</span>
-          <strong id="wait-value" class="meta-value">0 / 3</strong>
-        </article>
-      </section>
-
-      <section class="preset-section">
-        <span class="section-label">Quick target</span>
-        <div class="preset-row">
-          <button class="preset-button" type="button" data-target-preset="25">
-            25
-          </button>
-          <button class="preset-button" type="button" data-target-preset="50">
-            50
-          </button>
-          <button class="preset-button" type="button" data-target-preset="100">
-            100
-          </button>
-        </div>
-      </section>
-
-      <div class="control-row">
-        <label class="field">
-          <span>Target posts</span>
-          <input id="target-count" type="number" min="1" max="200" value="50" />
+        <label class="checkbox-row">
+          <input id="ai-enabled" type="checkbox" />
+          <span>Enable AI validation</span>
         </label>
-        <button id="start-button" type="button" class="primary-button">
-          Start
+        <label class="field">
+          <span>API key</span>
+          <input id="ai-api-key" type="password" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Model</span>
+          <input id="ai-model" type="text" value="gemini-2.0-flash" />
+        </label>
+        <label class="field field-textarea">
+          <span>System instruction</span>
+          <textarea id="ai-system-instruction" rows="6"></textarea>
+        </label>
+        <button id="save-ai-config" type="button" class="primary-button">
+          Save AI config
         </button>
-      </div>
-
-      <div class="action-row">
-        <button id="stop-button" type="button" class="secondary-button">
-          Stop
-        </button>
-        <button id="export-raw-button" type="button" class="secondary-button">
-          Export raw
-        </button>
-        <button id="export-enriched-button" type="button" class="primary-button">
-          Export enriched
-        </button>
-      </div>
-
-      <section class="activity-panel">
-        <div class="activity-header">
-          <span class="section-label">Enrichment</span>
-          <span id="enrichment-status" class="mini-badge">Idle</span>
-        </div>
-        <div class="enrichment-grid">
-          <article class="meta-card">
-            <span class="meta-label">Posts</span>
-            <strong id="enrichment-posts" class="meta-value">0 / 0</strong>
-          </article>
-          <article class="meta-card">
-            <span class="meta-label">Authors</span>
-            <strong id="enrichment-authors" class="meta-value">0 / 0</strong>
-          </article>
-        </div>
-        <p id="enrichment-current" class="status-copy">No enrichment in progress.</p>
       </section>
 
       <section class="activity-panel">
         <div class="activity-header">
-          <span class="section-label">Activity</span>
+          <span class="section-label">Debug reset</span>
         </div>
-        <ul id="activity-log" class="activity-log" aria-live="polite"></ul>
+        <p id="tab-debug-status" class="status-copy">
+          Select a LinkedIn tab to reset captured data for reruns.
+        </p>
+        <button id="reset-debug-data" type="button" class="secondary-button">
+          Reset current tab data
+        </button>
       </section>
 
-      <p id="export-feedback" class="sr-only" aria-live="polite"></p>
+      <p id="popup-feedback" class="feedback-copy" aria-live="polite"></p>
     </div>
     <script type="module" src="/src/ui/popup/main.js"></script>
   </body>

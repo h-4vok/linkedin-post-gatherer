@@ -8,7 +8,7 @@
 
 Browser extension for Chrome/Brave that automates raw data collection from the LinkedIn home feed, filters non-organic content, stores collection progress locally, and exports a final local `JSON` output for later AI analysis.
 
-This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The MVP is a user-triggered crawler with a LinkedIn content script, background coordination, a floating in-page control panel, popup backup controls, and local export. It does not send emails, post replies, or transmit gathered results to external services in this phase.
+This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The MVP is a user-triggered crawler with a LinkedIn content script, background coordination, a floating in-page control panel, popup backup controls, optional Gemini AI Studio post-validation, and local export. It does not send emails or post replies.
 
 ## Mermaid Documentation Convention
 
@@ -38,11 +38,11 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - Exclusion of promoted, poll, and suggested posts
   - Local persistence for in-progress collection through `chrome.storage.local`
   - Floating panel and popup controls with start/stop and target count
+  - Optional Gemini AI Studio relevance validation after capture
   - Final `JSON` export
 - Explicitly out of scope for this phase:
   - Sending emails
   - Posting comments or reactions
-  - Syncing with external APIs
   - Running as a backend job or scheduler-driven worker
 
 ## Technology Stack
@@ -71,8 +71,8 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 4. Between scrolls, the collector waits a randomized delay of `1.5s` to `3.5s`.
 5. For each discovered post container, exclusion rules remove promoted posts, polls, and suggested content.
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
-7. Background logic deduplicates and stores intermediate collection state in `chrome.storage.local`.
-8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`.
+7. Background logic deduplicates and stores intermediate collection state, then optionally validates each new post against Gemini AI Studio using a serial, quota-aware queue.
+8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`, while the popup also shows AI validation and author-enrichment status.
 9. When requested, export logic produces either a raw `linkedin_dump_[date].json` file or an enriched `linkedin_dump_[date]_enriched.json` file after sequential author enrichment.
 
 ## Core Operational Contracts
@@ -96,6 +96,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - `author_role`
   - `author_followers`
   - `author_weight`
+- AI validation may also persist an `interest_validation` block on each item for raw and enriched export flows.
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.
 - `post_text` should prefer the preloaded LinkedIn expandable text node so long posts can be captured without triggering UI expansion.
@@ -112,6 +113,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - export shaping
   - message payload validation
 - DOM extraction should prefer fixture-based tests so selector drift is visible and reviewable.
+- Live LinkedIn drift debugging should use the repo dump utility and runbook in `docs/debugging/linkedin-feed-dump.md` instead of a flaky always-on integration test.
 - Manual browser validation is required for major changes to manifest, messaging, and LinkedIn DOM interaction.
 
 ## Key Risks

@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "description": "Collects organic LinkedIn posts, extracts authors, and exports the current batch as JSON.",
   "permissions": ["storage", "activeTab", "downloads", "tabs"],
-  "host_permissions": ["https://www.linkedin.com/*"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

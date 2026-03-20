@@ -6,7 +6,7 @@ import {
   getStartState,
   getStoppedState,
 } from "../src/shared/crawler.js";
-import { RUN_STATES, STATUS_TEXT } from "../src/shared/constants.js";
+import { LONG_WAIT_MS, RUN_STATES, STATUS_TEXT } from "../src/shared/constants.js";
 
 describe("crawler helpers", () => {
   it("clamps target count into the supported range", () => {
@@ -94,7 +94,12 @@ describe("crawler helpers", () => {
       stalledWaitCount: 1,
       shouldStop: false,
       shouldLongWait: true,
+      longWaitMs: LONG_WAIT_MS,
     });
+  });
+
+  it("uses the shorter 20 second long wait", () => {
+    expect(LONG_WAIT_MS).toBe(20000);
   });
 
   it("stops only after repeated long waits without progress", () => {

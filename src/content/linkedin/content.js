@@ -3,6 +3,7 @@
     'div[componentkey="container-update-list_mainFeed-lazy-container"]';
   const POST_SELECTOR = 'div[role="listitem"]';
   const PROMOTED_LABELS = ["Promoted", "Publicidad"];
+  const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
   const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
   const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
   const PANEL_ROOT_ID = "linkedin-intelligence-harvester-root";
@@ -29,7 +30,7 @@
   const SCROLL_STEP_MAX = 600;
   const SCROLL_DELAY_MIN_MS = 1500;
   const SCROLL_DELAY_MAX_MS = 3500;
-  const LONG_WAIT_MS = 300000;
+  const LONG_WAIT_MS = 20000;
   const STALLED_WAIT_LIMIT = 3;
   const ACTIVITY_LIMIT = 4;
   const TARGET_PRESETS = [25, 50, 100];
@@ -66,7 +67,7 @@
     panelMinimized: "collector.panel.minimized",
   };
 
-  const processedElements = new WeakMap();
+  let processedElements = new WeakMap();
   const uiState = {
     count: 0,
     repostCount: 0,
@@ -229,6 +230,26 @@
 
     if (message.action === "stop") {
       crawlShouldStop = true;
+      return false;
+    }
+
+    if (message.action === "reset") {
+      crawlShouldStop = true;
+      crawlRunId += 1;
+      processedElements = new WeakMap();
+      uiState.count = 0;
+      uiState.repostCount = 0;
+      uiState.status = STATUS_TEXT.attached;
+      uiState.runState = RUN_STATES.idle;
+      uiState.noProgressCycles = 0;
+      uiState.stalledWaitCount = 0;
+      uiState.enrichment = mergeEnrichmentState(null);
+      uiState.activityItems = ["Debug reset completed."];
+      renderPanel();
+
+      if (activeFeedContainer) {
+        scheduleScan(activeFeedContainer);
+      }
     }
 
     return false;
@@ -530,15 +551,27 @@
     }
 
     let cleaned = normalizeWhitespace(text);
+    cleaned = cleaned.replace(/\bOpen to work\b/gi, " ");
+    cleaned = cleaned.replace(/\bHiring\b/gi, " ");
     cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
     cleaned = cleaned.replace(/\bPremium\b/gi, " ");
     cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
+    cleaned = cleaned.replace(/[,:]+/g, " ");
+    cleaned = cleaned.replace(/â€¢/g, " ");
     cleaned = cleaned.replace(/[•·]+/g, " ");
     cleaned = cleaned.replace(/â€¢|Â·/g, " ");
     cleaned = cleaned.replace(/\s+[•·]+\s*$/g, " ");
     cleaned = normalizeWhitespace(cleaned);
 
     return cleaned || null;
+  }
+
+  function hasRelationshipMarker(text) {
+    const normalized = normalizeWhitespace(text || "");
+
+    return RELATIONSHIP_MARKERS.some(function (marker) {
+      return normalized.includes(marker);
+    });
   }
 
   function findFeedContainer(root) {
@@ -565,16 +598,26 @@
     });
   }
 
+  function isSuggestedPost(postElement) {
+    const paragraphs = Array.from(postElement.querySelectorAll("p"));
+
+    return paragraphs.some(function (paragraph) {
+      const text = normalizeWhitespace(paragraph.textContent || "");
+
+      return SUGGESTED_LABELS.some(function (label) {
+        return text === label;
+      });
+    });
+  }
+
   function findRelationshipSpan(postElement) {
-    const spans = Array.from(postElement.querySelectorAll("span"));
+    const spans = Array.from(postElement.querySelectorAll("span, p"));
 
     return (
       spans.find(function (span) {
         const text = normalizeWhitespace(span.textContent || "");
 
-        return RELATIONSHIP_MARKERS.some(function (marker) {
-          return text.includes(marker);
-        });
+        return hasRelationshipMarker(text);
       }) || null
     );
   }
@@ -606,11 +649,43 @@
     return cleanPersonLabel(cleaned);
   }
 
+  function extractAuthorFromProfileAnchors(postElement) {
+    const anchors = Array.from(
+      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+    );
+
+    for (const anchor of anchors) {
+      const author = cleanPersonLabel(anchor.textContent || "");
+
+      if (author) {
+        return author;
+      }
+    }
+
+    return null;
+  }
+
   function extractAuthor(postElement) {
+    const labelledElements = Array.from(postElement.querySelectorAll("[aria-label]"));
+
+    for (const element of labelledElements) {
+      const label = normalizeWhitespace(element.getAttribute("aria-label") || "");
+
+      if (!hasRelationshipMarker(label)) {
+        continue;
+      }
+
+      const authorFromLabel = removeRelationshipMarker(label);
+
+      if (authorFromLabel) {
+        return authorFromLabel;
+      }
+    }
+
     const relationshipSpan = findRelationshipSpan(postElement);
 
     if (!relationshipSpan) {
-      return null;
+      return extractAuthorFromProfileAnchors(postElement);
     }
 
     let current = relationshipSpan;
@@ -626,7 +701,7 @@
       current = current.parentElement;
     }
 
-    return null;
+    return extractAuthorFromProfileAnchors(postElement);
   }
 
   function extractRepostMetadata(postElement) {
@@ -828,6 +903,11 @@
         continue;
       }
 
+      if (isSuggestedPost(postElement)) {
+        skippedItems.push("suggested");
+        continue;
+      }
+
       const author = extractAuthor(postElement);
 
       if (!author) {
@@ -843,6 +923,13 @@
     }
 
     return { acceptedItems: acceptedItems, skippedItems: skippedItems };
+  }
+
+  function summarizeSkippedReasons(skippedItems) {
+    return skippedItems.reduce(function (summary, reason) {
+      summary[reason] = (summary[reason] || 0) + 1;
+      return summary;
+    }, {});
   }
 
   function attachToFeedIfPresent() {
@@ -891,17 +978,20 @@
   async function runScan(feedContainer) {
     const totalListItems = findPostElements(feedContainer).length;
     const scanResult = scanFeedPosts(feedContainer);
+    const skippedBreakdown = summarizeSkippedReasons(scanResult.skippedItems);
 
     logPage("scan complete", {
       totalListItems: totalListItems,
       accepted: scanResult.acceptedItems.length,
       skipped: scanResult.skippedItems.length,
+      skippedBreakdown: skippedBreakdown,
     });
 
     await logToServiceWorker("scan-results", {
       totalListItems: totalListItems,
       accepted: scanResult.acceptedItems.length,
       skipped: scanResult.skippedItems.length,
+      skippedBreakdown: skippedBreakdown,
     });
 
     for (const item of scanResult.acceptedItems) {
@@ -910,10 +1000,11 @@
       logPage("item found", loggable);
     }
 
-    for (const reason of scanResult.skippedItems) {
-      if (reason === "missing-author") {
-        logPage("skipped item", { reason: reason });
-      }
+    for (const reason of Object.keys(skippedBreakdown)) {
+      logPage("skipped items", {
+        reason: reason,
+        count: skippedBreakdown[reason],
+      });
     }
 
     let addedCount = 0;
@@ -1069,9 +1160,10 @@
         .harvester-shell {
           position: fixed;
           display: grid;
-          gap: 16px;
+          gap: 12px;
           width: 320px;
-          padding: 16px;
+          max-height: calc(100vh - 32px);
+          padding: 14px;
           background: #ffffff;
           color: #111827;
           border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1224,14 +1316,17 @@
 
         .harvester-body {
           display: grid;
-          gap: 12px;
+          gap: 10px;
+          max-height: calc(100vh - 132px);
+          overflow-y: auto;
+          padding-right: 4px;
         }
 
         .harvester-hero,
         .harvester-activity {
           display: grid;
-          gap: 8px;
-          padding: 12px 16px;
+          gap: 6px;
+          padding: 10px 12px;
           border: 1px solid #e5e7eb;
           border-radius: 8px;
           background: #ffffff;
@@ -1279,19 +1374,19 @@
         }
 
         .harvester-hero-count {
-          font-size: 52px;
+          font-size: 44px;
         }
 
         .harvester-hero-target {
-          font-size: 28px;
+          font-size: 24px;
           color: #9ca3af;
-          padding-bottom: 6px;
+          padding-bottom: 4px;
         }
 
         .harvester-hero-separator {
-          font-size: 28px;
+          font-size: 24px;
           color: #9ca3af;
-          padding-bottom: 6px;
+          padding-bottom: 4px;
         }
 
         .harvester-status {
@@ -1306,7 +1401,7 @@
         .harvester-presets,
         .harvester-metrics {
           display: grid;
-          gap: 10px;
+          gap: 8px;
         }
 
         .harvester-presets,
@@ -1316,8 +1411,8 @@
 
         .harvester-metric-card {
           display: grid;
-          gap: 6px;
-          padding: 12px;
+          gap: 4px;
+          padding: 10px;
           border-radius: 8px;
           background: #ffffff;
           border: 1px solid #e5e7eb;
@@ -1442,33 +1537,48 @@
         }
 
         .harvester-enrichment-grid {
-          display: grid;
-          gap: 6px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px 12px;
+          align-items: center;
+        }
+
+        .harvester-enrichment-grid strong {
+          color: #111827;
+          font-size: 12px;
+          line-height: 1.3;
+          font-weight: 600;
+        }
+
+        .harvester-enrichment-status {
+          color: #0066ff;
         }
 
         .harvester-feedback-copy {
           margin: 0;
           color: #4b5563;
-          font-size: 12px;
-          line-height: 1.4;
+          font-size: 11px;
+          line-height: 1.35;
         }
 
         .harvester-activity-log {
           display: grid;
-          gap: 8px;
+          gap: 6px;
           margin: 0;
           padding: 0;
           list-style: none;
+          max-height: 74px;
+          overflow-y: auto;
         }
 
         .harvester-activity-log li {
           display: grid;
           grid-template-columns: 6px 1fr;
           align-items: start;
-          gap: 8px;
+          gap: 6px;
           color: #1f2937;
-          font-size: 12px;
-          line-height: 1.5;
+          font-size: 11px;
+          line-height: 1.35;
           font-weight: 450;
         }
 
@@ -1594,11 +1704,11 @@
             <p class="harvester-activity-label">Enrichment</p>
             <div class="harvester-enrichment-grid">
               <strong class="harvester-enrichment-status">Idle</strong>
-              <strong class="harvester-enrichment-posts">0 / 0 posts</strong>
-              <strong class="harvester-enrichment-authors">0 / 0 authors</strong>
+              <strong class="harvester-enrichment-posts">Posts 0 / 0</strong>
+              <strong class="harvester-enrichment-authors">Authors 0 / 0</strong>
             </div>
             <p class="harvester-feedback-copy">No enrichment in progress.</p>
-          </div>
+          </section>
           <section class="harvester-activity">
             <p class="harvester-activity-label">Activity</p>
             <ul class="harvester-activity-log">
@@ -1730,15 +1840,15 @@
       uiState.enrichment.status,
     );
     panel.enrichmentPosts.textContent =
+      "Posts " +
       uiState.enrichment.processedPosts +
       " / " +
-      uiState.enrichment.totalPosts +
-      " posts";
+      uiState.enrichment.totalPosts;
     panel.enrichmentAuthors.textContent =
+      "Authors " +
       uiState.enrichment.processedAuthors +
       " / " +
-      uiState.enrichment.totalAuthors +
-      " authors";
+      uiState.enrichment.totalAuthors;
     panel.enrichmentCopy.textContent =
       uiState.enrichment.lastMessage || "No enrichment in progress.";
     panel.activityLog.innerHTML = uiState.activityItems

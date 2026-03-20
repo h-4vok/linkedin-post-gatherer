@@ -150,3 +150,32 @@ Treat the requirements typo as non-canonical documentation noise and correct it 
   - Makes future consumers of the exported `JSON` easier to support.
 - Tradeoff:
   - The implementation should still note the difference so future readers understand why docs diverge from the original typo.
+
+## ADR-0007: Run Gemini validation asynchronously with free-tier-safe throttling
+
+### Status
+
+Accepted
+
+### Context
+
+The backlog adds a second-stage relevance decision using Gemini AI Studio. This repository runs as a Manifest V3 browser extension and will use the Google AI Studio free tier, which makes quota spikes and rate limiting a practical runtime concern.
+
+### Decision
+
+Run Gemini validation in the background service worker as an asynchronous post-processing queue:
+
+- process one post at a time
+- keep a conservative delay between requests
+- retry only transient failures
+- persist `interest_validation` on each post with fallback state `unknown` after retries are exhausted
+- configure the integration from the popup, not from the floating panel
+
+### Consequences
+
+- Positive:
+  - Keeps the crawler responsive and independent from AI latency.
+  - Makes quota handling explicit instead of hiding it behind optimistic parallel calls.
+  - Preserves traceability in exported data even when Gemini is unavailable.
+- Tradeoff:
+  - Some exports will contain a mix of `interesa`, `no_interesa`, `pending`, and `unknown` under free-tier pressure.

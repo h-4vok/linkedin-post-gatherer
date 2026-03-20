@@ -56,3 +56,26 @@ Caso detectado:
 - Extraer y persistir el link canonico en el campo `link` del item normalizado.
 - Verificar que el export raw y enriched conserven el permalink correctamente.
 - Agregar cobertura de tests para evitar que vuelva a quedar en `null` sin detectar la regresion.
+
+## Item 5: Normalizar formatter/linter en package.json y rules of engagement
+
+Resolver la desalineacion actual entre documentacion y tooling: el repo exige `npm run lint`, `npm run format` y `npm run format:write` en README, checklist y repo rules, pero esos scripts no existen hoy en `package.json`.
+
+### Resultado esperado
+- Agregar `lint`, `format` y `format:write` a `package.json` con tooling real y operativo.
+- Dejar alineados `README.md`, `REPO_WORK_RULES.md`, `DELIVERY_CHECKLIST.md` y cualquier otro rule of engagement con los comandos efectivamente soportados.
+- Definir si esos checks deben correr en `pre-push`, `pre-commit` o solo en CI, y dejarlo implementado/documentado.
+- Asegurar que la merge gate documentada coincide con la automatizacion real del repo.
+
+## Item 6: Export de posts ignorados para debugging del extractor
+
+Agregar una capacidad de export o dump de los posts que el harvester detecta pero termina ignorando, para poder revisar despues los casos descartados y depurar mejor cambios de DOM o heuristicas demasiado agresivas.
+
+### Resultado esperado
+- Persistir temporalmente o acumular durante la corrida una muestra util de posts ignorados junto con su razon de descarte (`missing-author`, `suggested`, `promoted`, u otras futuras).
+- Poder exportar esos posts ignorados en un `JSON` separado o como bloque diferenciado de debugging.
+- Incluir suficiente contexto para diagnostico, por ejemplo:
+  - razon de descarte
+  - `textPreview`
+  - fragmento HTML truncado o metadata relevante
+- Mantener esta capacidad orientada a debugging, sin mezclar los posts ignorados con el export normal `raw` o `enriched`.

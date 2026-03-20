@@ -2,6 +2,7 @@ const FEED_SELECTOR =
   'div[componentkey="container-update-list_mainFeed-lazy-container"]';
 const POST_SELECTOR = 'div[role="listitem"]';
 const PROMOTED_LABELS = ["Promoted", "Publicidad"];
+const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
 const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
 const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
 
@@ -26,15 +27,23 @@ function cleanPersonLabel(text) {
   }
 
   let cleaned = normalizeWhitespace(text);
+  cleaned = cleaned.replace(/\bOpen to work\b/gi, " ");
+  cleaned = cleaned.replace(/\bHiring\b/gi, " ");
   cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
   cleaned = cleaned.replace(/\bPremium\b/gi, " ");
   cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
+  cleaned = cleaned.replace(/[,:]+/g, " ");
   cleaned = cleaned.replace(/[•·]+/g, " ");
-  cleaned = cleaned.replace(/â€¢|Â·/g, " ");
+  cleaned = cleaned.replace(/â€¢|Ã¢â‚¬Â¢|Ã‚Â·/g, " ");
   cleaned = cleaned.replace(/\s+[•·]+\s*$/g, " ");
   cleaned = normalizeWhitespace(cleaned);
 
   return cleaned || null;
+}
+
+function hasRelationshipMarker(text) {
+  const normalized = normalizeWhitespace(text || "");
+  return RELATIONSHIP_MARKERS.some((marker) => normalized.includes(marker));
 }
 
 export function findFeedContainer(root = document) {
@@ -59,38 +68,25 @@ export function isPromotedPost(postElement) {
   });
 }
 
-export function findRelationshipSpan(postElement) {
-  const spans = Array.from(postElement.querySelectorAll("span"));
+export function isSuggestedPost(postElement) {
+  const paragraphs = Array.from(postElement.querySelectorAll("p"));
 
-  return (
-    spans.find((span) => {
-      const text = normalizeWhitespace(span.textContent || "");
-      return RELATIONSHIP_MARKERS.some((marker) => text.includes(marker));
-    }) || null
-  );
+  return paragraphs.some((paragraph) => {
+    const text = normalizeWhitespace(paragraph.textContent || "");
+
+    return SUGGESTED_LABELS.some((label) => text === label);
+  });
 }
 
-export function extractAuthor(postElement) {
-  const relationshipSpan = findRelationshipSpan(postElement);
+export function findRelationshipSpan(postElement) {
+  const candidates = Array.from(postElement.querySelectorAll("span, p"));
 
-  if (!relationshipSpan) {
-    return null;
-  }
-
-  let current = relationshipSpan;
-
-  while (current && current !== postElement) {
-    const text = normalizeWhitespace(current.textContent || "");
-    const author = removeRelationshipMarker(text);
-
-    if (author && author !== text) {
-      return author;
-    }
-
-    current = current.parentElement;
-  }
-
-  return null;
+  return (
+    candidates.find((candidate) => {
+      const text = normalizeWhitespace(candidate.textContent || "");
+      return hasRelationshipMarker(text);
+    }) || null
+  );
 }
 
 function removeRelationshipMarker(text) {
@@ -118,6 +114,71 @@ function removeRelationshipMarker(text) {
   }
 
   return cleanPersonLabel(cleaned);
+}
+
+function extractAuthorFromAriaLabels(postElement) {
+  const labelledElements = Array.from(postElement.querySelectorAll("[aria-label]"));
+
+  for (const element of labelledElements) {
+    const label = normalizeWhitespace(element.getAttribute("aria-label") || "");
+
+    if (!hasRelationshipMarker(label)) {
+      continue;
+    }
+
+    const author = removeRelationshipMarker(label);
+
+    if (author) {
+      return author;
+    }
+  }
+
+  return null;
+}
+
+function extractAuthorFromProfileAnchors(postElement) {
+  const anchors = Array.from(
+    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+  );
+
+  for (const anchor of anchors) {
+    const author = cleanPersonLabel(anchor.textContent || "");
+
+    if (author) {
+      return author;
+    }
+  }
+
+  return null;
+}
+
+export function extractAuthor(postElement) {
+  const ariaLabelAuthor = extractAuthorFromAriaLabels(postElement);
+
+  if (ariaLabelAuthor) {
+    return ariaLabelAuthor;
+  }
+
+  const relationshipSpan = findRelationshipSpan(postElement);
+
+  if (!relationshipSpan) {
+    return extractAuthorFromProfileAnchors(postElement);
+  }
+
+  let current = relationshipSpan;
+
+  while (current && current !== postElement) {
+    const text = normalizeWhitespace(current.textContent || "");
+    const author = removeRelationshipMarker(text);
+
+    if (author && author !== text) {
+      return author;
+    }
+
+    current = current.parentElement;
+  }
+
+  return extractAuthorFromProfileAnchors(postElement);
 }
 
 export function extractRepostMetadata(postElement) {
@@ -251,6 +312,10 @@ export function buildNormalizedItem(
 export function analyzePostElement(postElement, now = new Date()) {
   if (isPromotedPost(postElement)) {
     return { status: "skipped", reason: "promoted" };
+  }
+
+  if (isSuggestedPost(postElement)) {
+    return { status: "skipped", reason: "suggested" };
   }
 
   const author = extractAuthor(postElement);
