@@ -53,6 +53,7 @@ import {
 
 const activeEnrichments = new Map();
 const validationWorkers = new Map();
+const AI_RETRY_ALARM_PREFIX = "collector.ai.retry.";
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearTabState(tabId);
@@ -64,6 +65,27 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   void clearLegacyLocalState();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (!alarm?.name?.startsWith(AI_RETRY_ALARM_PREFIX)) {
+    return;
+  }
+
+  const tabId = Number.parseInt(
+    alarm.name.slice(AI_RETRY_ALARM_PREFIX.length),
+    10,
+  );
+
+  if (!Number.isInteger(tabId)) {
+    return;
+  }
+
+  logServiceWorkerEvent("ai-validation-alarm-fired", {
+    tabId,
+    alarm: alarm.name,
+  });
+  void ensureHydratedState(tabId).then(() => ensureValidationWorker(tabId));
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -605,7 +627,8 @@ async function runValidationWorker(tabId) {
         message: normalizedError.message,
       });
       await broadcastCountUpdated(tabId, queueState);
-      await delay(retryDelayMs);
+      await scheduleValidationRetryAlarm(tabId, retryDelayMs);
+      return;
     }
   }
 }
@@ -890,6 +913,22 @@ function normalizeAiError(error) {
   const nextError = new Error(error?.message || "Unexpected AI validation error.");
   nextError.kind = "network-error";
   return nextError;
+}
+
+async function scheduleValidationRetryAlarm(tabId, delayMs) {
+  const alarmName = `${AI_RETRY_ALARM_PREFIX}${tabId}`;
+  const delayMinutes = Math.max(1 / 60, delayMs / 60000);
+
+  await chrome.alarms.create(alarmName, {
+    delayInMinutes: delayMinutes,
+  });
+
+  logServiceWorkerEvent("ai-validation-alarm-scheduled", {
+    tabId,
+    alarmName,
+    delayMs,
+    delayMinutes,
+  });
 }
 
 function delay(ms) {

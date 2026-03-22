@@ -6,6 +6,10 @@
   const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
   const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
   const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
+  const OVERFLOW_BUTTON_SELECTOR =
+    'button[aria-label*="Open control menu for post"]';
+  const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
+  const MENU_ITEM_SELECTOR = '[role="menuitem"]';
   const PANEL_ROOT_ID = "linkedin-intelligence-harvester-root";
   const DEFAULT_PANEL_POSITION = { top: 96, right: 24 };
   const TARGET_COUNT_DEFAULT = 50;
@@ -1070,6 +1074,137 @@
     };
   }
 
+  function findPostOverflowButton(postElement) {
+    return postElement?.querySelector(OVERFLOW_BUTTON_SELECTOR) || null;
+  }
+
+  function findFloatingPostMenu() {
+    return document.querySelector(FLOATING_MENU_SELECTOR);
+  }
+
+  function findCopyLinkMenuItem(menuElement) {
+    return (
+      Array.from(menuElement?.querySelectorAll(MENU_ITEM_SELECTOR) || []).find((item) =>
+        normalizeWhitespace(item.textContent || "")
+          .toLowerCase()
+          .includes("copy link to post"),
+      ) || null
+    );
+  }
+
+  async function resolvePostPermalink(postElement, previousLink = null) {
+    const overflowButton = findPostOverflowButton(postElement);
+
+    if (!overflowButton) {
+      logPage("permalink-overflow-button-missing");
+      return null;
+    }
+
+    logPage("permalink-menu-opening");
+    overflowButton.click();
+
+    const menuElement = await waitForElement(findFloatingPostMenu, 1200);
+
+    if (!menuElement) {
+      logPage("permalink-menu-timeout");
+      return null;
+    }
+
+    logPage("permalink-menu-found");
+    const copyLinkItem = findCopyLinkMenuItem(menuElement);
+
+    if (!copyLinkItem) {
+      logPage("permalink-copy-link-item-missing");
+      closeFloatingMenu(overflowButton);
+      return null;
+    }
+
+    logPage("permalink-copy-link-click");
+    copyLinkItem.click();
+    await sleep(200);
+    const clipboardUrl = normalizeCapturedPermalink(
+      await readClipboardPermalink(),
+    );
+    closeFloatingMenu(overflowButton);
+
+    if (clipboardUrl) {
+      if (isDuplicatePermalink(clipboardUrl, previousLink)) {
+        logPage("permalink-duplicate-detected", {
+          candidate: clipboardUrl,
+          previousLink: previousLink,
+        });
+        return null;
+      }
+
+      logPage("permalink-found-in-clipboard", { link: clipboardUrl });
+      return clipboardUrl;
+    }
+
+    logPage("permalink-resolution-failed");
+    return null;
+  }
+
+  async function readClipboardPermalink() {
+    if (!navigator.clipboard?.readText) {
+      logPage("permalink-clipboard-unavailable");
+      return null;
+    }
+
+    await sleep(150);
+
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      return text;
+    } catch (error) {
+      logPage("permalink-clipboard-read-failed", { message: error.message });
+    }
+
+    return null;
+  }
+
+  function closeFloatingMenu(overflowButton) {
+    overflowButton?.click();
+  }
+
+  function normalizeCapturedPermalink(value) {
+    const normalized = String(value || "").trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (!/^https:\/\/www\.linkedin\.com\//i.test(normalized)) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  function isDuplicatePermalink(candidate, previousLink) {
+    return Boolean(candidate && previousLink && candidate === previousLink);
+  }
+
+  async function waitForElement(getElement, timeoutMs) {
+    const existing = getElement();
+
+    if (existing) {
+      return existing;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      await sleep(50);
+      const element = getElement();
+
+      if (element) {
+        return element;
+      }
+    }
+
+    return null;
+  }
+
   function extractProfileSignals() {
     const roleSelectors = [
       ".text-body-medium.break-words",
@@ -1106,9 +1241,10 @@
     };
   }
 
-  function scanFeedPosts(feedContainer) {
+  async function scanFeedPosts(feedContainer) {
     const acceptedItems = [];
     const skippedItems = [];
+    let previousAcceptedLink = null;
 
     for (const postElement of findPostElements(feedContainer)) {
       const currentElementSignature = normalizeWhitespace(
@@ -1140,9 +1276,17 @@
 
       const repostMetadata = extractRepostMetadata(postElement);
 
-      acceptedItems.push(
-        buildNormalizedItem(postElement, author, repostMetadata, new Date()),
+      const item = buildNormalizedItem(
+        postElement,
+        author,
+        repostMetadata,
+        new Date(),
       );
+      item.link = await resolvePostPermalink(postElement, previousAcceptedLink);
+      if (item.link) {
+        previousAcceptedLink = item.link;
+      }
+      acceptedItems.push(item);
     }
 
     return { acceptedItems: acceptedItems, skippedItems: skippedItems };
@@ -1200,7 +1344,7 @@
 
   async function runScan(feedContainer) {
     const totalListItems = findPostElements(feedContainer).length;
-    const scanResult = scanFeedPosts(feedContainer);
+    const scanResult = await scanFeedPosts(feedContainer);
     const skippedBreakdown = summarizeSkippedReasons(scanResult.skippedItems);
 
     logPage("scan complete", {
