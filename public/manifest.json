@@ -3,7 +3,7 @@
   "name": "LinkedIn Intelligence Harvester",
   "version": "0.1.0",
   "description": "Collects organic LinkedIn posts, extracts authors, and exports the current batch as JSON.",
-  "permissions": ["storage", "activeTab", "downloads", "tabs"],
+  "permissions": ["storage", "activeTab", "downloads", "tabs", "alarms"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://generativelanguage.googleapis.com/*"

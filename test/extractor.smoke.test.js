@@ -7,8 +7,11 @@ import {
   extractPostedTime,
   extractPostText,
   extractRepostMetadata,
+  findCopyLinkMenuItem,
   findFeedContainer,
+  findFloatingPostMenu,
   findPostElements,
+  findPostOverflowButton,
   isPromotedPost,
   isSuggestedPost,
   scanFeedPosts,
@@ -21,6 +24,12 @@ const FEED_FIXTURE = `
     <div role="listitem" data-post-id="organic-1">
       <div>
         <p>Regular organic post</p>
+        <button
+          type="button"
+          aria-label="Open control menu for post by Gonzalo Corbijn"
+        >
+          Open menu
+        </button>
         <a href="https://www.linkedin.com/in/gonzalo-corbijn/">Gonzalo Corbijn</a>
         <span aria-hidden="true">
           Gonzalo Corbijn
@@ -113,6 +122,12 @@ const FEED_FIXTURE = `
       <span data-testid="expandable-text-box">Author should come from paragraph marker.</span>
     </div>
   </div>
+  <div popover="manual">
+    <div role="menu">
+      <div role="menuitem">Save</div>
+      <div role="menuitem">Copy link to post</div>
+    </div>
+  </div>
 `;
 
 function setupDocument() {
@@ -167,6 +182,17 @@ describe("LinkedIn feed smoke extraction", () => {
       "https://www.linkedin.com/in/gonzalo-corbijn/",
     );
     expect(extractAuthorProfileUrl(posts[2], "Ada Lovelace")).toBeNull();
+  });
+
+  it("finds the overflow button and floating copy-link menu item", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(findPostOverflowButton(posts[0])).not.toBeNull();
+    expect(findFloatingPostMenu(document)).not.toBeNull();
+    expect(findCopyLinkMenuItem(document)?.textContent).toContain(
+      "Copy link to post",
+    );
   });
 
   it("detects repost metadata without misclassifying social suggestions", () => {

@@ -5,6 +5,10 @@ const PROMOTED_LABELS = ["Promoted", "Publicidad"];
 const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
 const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
 const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
+const OVERFLOW_BUTTON_SELECTOR =
+  'button[aria-label*="Open control menu for post"]';
+const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
+const MENU_ITEM_SELECTOR = '[role="menuitem"]';
 
 function normalizeWhitespace(value) {
   return value.replace(/\s+/g, " ").trim();
@@ -277,6 +281,30 @@ export function extractAuthorProfileUrl(postElement, author) {
   }
 }
 
+export function findPostOverflowButton(postElement) {
+  return postElement?.querySelector(OVERFLOW_BUTTON_SELECTOR) || null;
+}
+
+export function findFloatingPostMenu(root = document) {
+  return root?.querySelector(FLOATING_MENU_SELECTOR) || null;
+}
+
+export function findCopyLinkMenuItem(root = document) {
+  const menu = findFloatingPostMenu(root);
+
+  if (!menu) {
+    return null;
+  }
+
+  return (
+    Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR)).find((item) =>
+      normalizeWhitespace(item.textContent || "")
+        .toLowerCase()
+        .includes("copy link to post"),
+    ) || null
+  );
+}
+
 export function buildFingerprint(postElement, author) {
   const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
     0,
@@ -291,9 +319,10 @@ export function buildNormalizedItem(
   author,
   repostMetadata,
   now = new Date(),
+  options = {},
 ) {
   return {
-    link: null,
+    link: options.link || null,
     author,
     author_profile_url: extractAuthorProfileUrl(postElement, author),
     reposted_by: repostMetadata.reposted_by,
