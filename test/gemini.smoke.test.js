@@ -19,14 +19,14 @@ describe("gemini validation helpers", () => {
     const config = normalizeAiConfig({
       enabled: true,
       apiKey: " test-key ",
-      model: " gemini-2.0-flash ",
+      model: " gemini-2.5-flash ",
       systemInstruction: " decide relevance ",
     });
 
     expect(config).toEqual({
       enabled: true,
       apiKey: "test-key",
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: "decide relevance",
     });
     expect(getAiConfigError(config)).toBeNull();
@@ -39,7 +39,7 @@ describe("gemini validation helpers", () => {
     const config = normalizeAiConfig({
       enabled: true,
       apiKey: "test-key",
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: "",
     });
 
@@ -47,14 +47,14 @@ describe("gemini validation helpers", () => {
     expect(getAiConfigError(config)).toBeNull();
   });
 
-  it("parses an interesa decision from Gemini", async () => {
+  it("parses an interested decision from Gemini", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         candidates: [
           {
             content: {
-              parts: [{ text: "interesa" }],
+              parts: [{ text: "interested" }],
             },
           },
         ],
@@ -72,8 +72,8 @@ describe("gemini validation helpers", () => {
       {
         enabled: true,
         apiKey: "abc",
-        model: "gemini-2.0-flash",
-        systemInstruction: "Return only interesa or no_interesa.",
+        model: "gemini-2.5-flash",
+        systemInstruction: "Return only interested or not_interested.",
       },
       { fetchImpl },
     );
@@ -108,8 +108,8 @@ describe("gemini validation helpers", () => {
         {
           enabled: true,
           apiKey: "abc",
-          model: "gemini-2.0-flash",
-          systemInstruction: "Return only interesa or no_interesa.",
+          model: "gemini-2.5-flash",
+          systemInstruction: "Return only interested or not_interested.",
         },
         { fetchImpl },
       ),

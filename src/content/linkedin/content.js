@@ -32,8 +32,21 @@
   const SCROLL_DELAY_MAX_MS = 3500;
   const LONG_WAIT_MS = 20000;
   const STALLED_WAIT_LIMIT = 3;
-  const ACTIVITY_LIMIT = 4;
+  const ACTIVITY_LIMIT = 30;
   const TARGET_PRESETS = [25, 50, 100];
+  const AI_QUEUE_PHASES = {
+    idle: "idle",
+    processing: "processing",
+    backingOff: "backing-off",
+    disabled: "disabled",
+    configError: "config-error",
+  };
+  const AI_STATUS = {
+    pending: "pending",
+    interested: "interested",
+    notInterested: "not_interested",
+    unknown: "unknown",
+  };
 
   const MESSAGE_TYPES = {
     feedReady: "collector/feed-ready",
@@ -78,6 +91,8 @@
     stalledWaitCount: 0,
     activityItems: [],
     enrichment: createEmptyEnrichmentState(),
+    aiCounts: createEmptyAiCounts(),
+    aiQueue: createEmptyAiQueueState(),
     panelPosition: { ...DEFAULT_PANEL_POSITION },
     panelMinimized: false,
     feedVisible: false,
@@ -135,6 +150,8 @@
     uiState.noProgressCycles = response?.state?.noProgressCycles || 0;
     uiState.stalledWaitCount = response?.state?.stalledWaitCount || 0;
     uiState.enrichment = mergeEnrichmentState(response?.state?.enrichment);
+    uiState.aiCounts = mergeAiCounts(response?.state?.aiCounts);
+    uiState.aiQueue = mergeAiQueueState(response?.state?.aiQueue);
     uiState.panelPosition = clampPanelPosition(
       stored[STORAGE_KEYS.panelPosition] || DEFAULT_PANEL_POSITION,
       { minimized: stored[STORAGE_KEYS.panelMinimized] || false },
@@ -200,6 +217,12 @@
       uiState.noProgressCycles = message.noProgressCycles || 0;
       uiState.stalledWaitCount = message.stalledWaitCount || 0;
       uiState.enrichment = mergeEnrichmentState(message.enrichment);
+      const nextAiCounts = mergeAiCounts(message.aiCounts);
+      const nextAiQueue = mergeAiQueueState(message.aiQueue);
+
+      appendAiActivity(nextAiCounts, nextAiQueue);
+      uiState.aiCounts = nextAiCounts;
+      uiState.aiQueue = nextAiQueue;
 
       if (
         uiState.enrichment.status === ENRICHMENT_STATES.running &&
@@ -481,6 +504,112 @@
     );
   }
 
+  function createEmptyAiCounts() {
+    return {
+      pending: 0,
+      interested: 0,
+      not_interested: 0,
+      unknown: 0,
+    };
+  }
+
+  function createEmptyAiQueueState() {
+    return {
+      phase: AI_QUEUE_PHASES.idle,
+      retryAfterUntil: null,
+      lastRequestAt: null,
+      lastError: null,
+      pendingCount: 0,
+    };
+  }
+
+  function mergeAiCounts(aiCounts) {
+    return {
+      ...createEmptyAiCounts(),
+      ...(aiCounts || {}),
+    };
+  }
+
+  function mergeAiQueueState(aiQueue) {
+    return {
+      ...createEmptyAiQueueState(),
+      ...(aiQueue || {}),
+    };
+  }
+
+  function appendAiActivity(nextAiCounts, nextAiQueue) {
+    if (!nextAiQueue) {
+      return;
+    }
+
+    if (
+      nextAiQueue.phase === AI_QUEUE_PHASES.processing &&
+      uiState.aiQueue.phase !== AI_QUEUE_PHASES.processing
+    ) {
+      pushActivity(
+        "AI validation running for " + (nextAiQueue.pendingCount || 0) + " pending posts.",
+      );
+    }
+
+    if (
+      nextAiQueue.phase === AI_QUEUE_PHASES.backingOff &&
+      (uiState.aiQueue.phase !== AI_QUEUE_PHASES.backingOff ||
+        nextAiQueue.retryAfterUntil !== uiState.aiQueue.retryAfterUntil)
+    ) {
+      pushActivity(
+        "AI validation backing off after rate limit. Pending: " +
+          (nextAiQueue.pendingCount || 0) +
+          ".",
+      );
+    }
+
+    if (
+      nextAiQueue.phase === AI_QUEUE_PHASES.configError &&
+      nextAiQueue.lastError &&
+      nextAiQueue.lastError !== uiState.aiQueue.lastError
+    ) {
+      pushActivity("AI config error: " + nextAiQueue.lastError);
+    }
+
+    if (
+      nextAiQueue.phase === AI_QUEUE_PHASES.disabled &&
+      uiState.aiQueue.phase !== AI_QUEUE_PHASES.disabled
+    ) {
+      pushActivity("AI validation disabled.");
+    }
+
+    if (
+      nextAiQueue.phase === AI_QUEUE_PHASES.idle &&
+      uiState.aiQueue.phase !== AI_QUEUE_PHASES.idle &&
+      (nextAiCounts.pending || 0) === 0
+    ) {
+      pushActivity(
+        "AI validation completed. interested: " +
+          (nextAiCounts.interested || 0) +
+          ", not_interested: " +
+          (nextAiCounts.not_interested || 0) +
+          ", unknown: " +
+          (nextAiCounts.unknown || 0) +
+          ".",
+      );
+    }
+
+    if ((nextAiCounts.interested || 0) > (uiState.aiCounts.interested || 0)) {
+      pushActivity("AI marked 1 post as interested.");
+    }
+
+    if (
+      (nextAiCounts.not_interested || 0) >
+      (uiState.aiCounts.not_interested || 0)
+    ) {
+      pushActivity("AI marked 1 post as not_interested.");
+    }
+
+    if ((nextAiCounts.unknown || 0) > (uiState.aiCounts.unknown || 0)) {
+      pushActivity("AI left 1 post as unknown after retries.");
+    }
+  }
+
   function logToServiceWorker(event, payload) {
     return safeSendMessage({
       type: MESSAGE_TYPES.log,
@@ -532,6 +661,100 @@
       default:
         return "Idle";
     }
+  }
+
+  function formatAiQueuePhase(phase) {
+    switch (phase) {
+      case AI_QUEUE_PHASES.processing:
+        return "Processing";
+      case AI_QUEUE_PHASES.backingOff:
+        return "Backing off";
+      case AI_QUEUE_PHASES.disabled:
+        return "Disabled";
+      case AI_QUEUE_PHASES.configError:
+        return "Config error";
+      default:
+        return "Idle";
+    }
+  }
+
+  function formatAiSummary() {
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.disabled) {
+      return "AI validation is disabled.";
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.configError) {
+      return uiState.aiQueue.lastError || "AI config needs attention.";
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff) {
+      return (
+        "Waiting before retry. " +
+        formatRetryCountdown(uiState.aiQueue.retryAfterUntil)
+      );
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.processing) {
+      return (
+        "Validating posts now. Pending: " +
+        (uiState.aiCounts.pending || 0) +
+        "."
+      );
+    }
+
+    if ((uiState.aiCounts.pending || 0) === 0 && hasAiResults()) {
+      return "AI validation complete for current batch.";
+    }
+
+    return "No AI validation running.";
+  }
+
+  function formatRetryCountdown(retryAfterUntil) {
+    if (!retryAfterUntil) {
+      return "Retry time pending.";
+    }
+
+    const waitMs = new Date(retryAfterUntil).getTime() - Date.now();
+
+    if (waitMs <= 0) {
+      return "Retrying shortly.";
+    }
+
+    const totalSeconds = Math.ceil(waitMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    if (minutes <= 0) {
+      return "Retry in " + seconds + "s.";
+    }
+
+    return "Retry in " + minutes + "m " + String(seconds).padStart(2, "0") + "s.";
+  }
+
+  function getAiDoneCount() {
+    return (
+      (uiState.aiCounts.interested || 0) +
+      (uiState.aiCounts.not_interested || 0) +
+      (uiState.aiCounts.unknown || 0)
+    );
+  }
+
+  function hasAiResults() {
+    return getAiDoneCount() > 0;
+  }
+
+  function getEnrichedButtonLabel() {
+    if (uiState.enrichment.status === ENRICHMENT_STATES.running) {
+      return "Enriching...";
+    }
+
+    if (uiState.enrichment.readyForDownload) {
+      return uiState.aiCounts.pending > 0
+        ? "Download enriched (AI pending)"
+        : "Download enriched";
+    }
+
+    return "Export enriched";
   }
 
   function escapeRegExp(value) {
@@ -1536,21 +1759,24 @@
           min-height: 20px;
         }
 
-        .harvester-enrichment-grid {
+        .harvester-enrichment-grid,
+        .harvester-ai-grid {
           display: flex;
           flex-wrap: wrap;
           gap: 8px 12px;
           align-items: center;
         }
 
-        .harvester-enrichment-grid strong {
+        .harvester-enrichment-grid strong,
+        .harvester-ai-grid strong {
           color: #111827;
           font-size: 12px;
           line-height: 1.3;
           font-weight: 600;
         }
 
-        .harvester-enrichment-status {
+        .harvester-enrichment-status,
+        .harvester-ai-status {
           color: #0066ff;
         }
 
@@ -1710,6 +1936,17 @@
             <p class="harvester-feedback-copy">No enrichment in progress.</p>
           </section>
           <section class="harvester-activity">
+            <p class="harvester-activity-label">AI Validation</p>
+            <div class="harvester-ai-grid">
+              <strong class="harvester-ai-status">Idle</strong>
+              <strong class="harvester-ai-pending">Pending 0</strong>
+              <strong class="harvester-ai-done">Done 0</strong>
+              <strong class="harvester-ai-results">Interested 0 / Not 0 / Unknown 0</strong>
+            </div>
+            <p class="harvester-ai-copy harvester-feedback-copy">No AI validation running.</p>
+            <p class="harvester-ai-error harvester-feedback-copy">Last error: none</p>
+          </section>
+          <section class="harvester-activity">
             <p class="harvester-activity-label">Activity</p>
             <ul class="harvester-activity-log">
               <li>Waiting for LinkedIn feed...</li>
@@ -1748,6 +1985,12 @@
       enrichmentPosts: shadowRoot.querySelector(".harvester-enrichment-posts"),
       enrichmentAuthors: shadowRoot.querySelector(".harvester-enrichment-authors"),
       enrichmentCopy: shadowRoot.querySelector(".harvester-feedback-copy"),
+      aiStatus: shadowRoot.querySelector(".harvester-ai-status"),
+      aiPending: shadowRoot.querySelector(".harvester-ai-pending"),
+      aiDone: shadowRoot.querySelector(".harvester-ai-done"),
+      aiResults: shadowRoot.querySelector(".harvester-ai-results"),
+      aiCopy: shadowRoot.querySelector(".harvester-ai-copy"),
+      aiError: shadowRoot.querySelector(".harvester-ai-error"),
       feedback: shadowRoot.querySelector(".harvester-feedback"),
       activityLog: shadowRoot.querySelector(".harvester-activity-log"),
       chip: shadowRoot.querySelector(".harvester-chip"),
@@ -1825,11 +2068,7 @@
       uiState.runState === RUN_STATES.stopping ||
       uiState.runState === RUN_STATES.unavailable ||
       uiState.enrichment.status === ENRICHMENT_STATES.running;
-    panel.exportEnrichedButton.textContent = uiState.enrichment.readyForDownload
-      ? "Download enriched"
-      : uiState.enrichment.status === ENRICHMENT_STATES.running
-        ? "Enriching..."
-        : "Export enriched";
+    panel.exportEnrichedButton.textContent = getEnrichedButtonLabel();
     panel.heroCount.textContent = String(uiState.count);
     panel.heroTarget.textContent = String(uiState.targetCount);
     panel.reposts.textContent = String(uiState.repostCount);
@@ -1851,6 +2090,20 @@
       uiState.enrichment.totalAuthors;
     panel.enrichmentCopy.textContent =
       uiState.enrichment.lastMessage || "No enrichment in progress.";
+    panel.aiStatus.textContent = formatAiQueuePhase(uiState.aiQueue.phase);
+    panel.aiPending.textContent = "Pending " + (uiState.aiCounts.pending || 0);
+    panel.aiDone.textContent = "Done " + getAiDoneCount();
+    panel.aiResults.textContent =
+      "Interested " +
+      (uiState.aiCounts.interested || 0) +
+      " / Not " +
+      (uiState.aiCounts.not_interested || 0) +
+      " / Unknown " +
+      (uiState.aiCounts.unknown || 0);
+    panel.aiCopy.textContent = formatAiSummary();
+    panel.aiError.textContent = uiState.aiQueue.lastError
+      ? "Last error: " + uiState.aiQueue.lastError
+      : "Last error: none";
     panel.activityLog.innerHTML = uiState.activityItems
       .map(function (item) {
         return "<li>" + escapeHtml(item) + "</li>";

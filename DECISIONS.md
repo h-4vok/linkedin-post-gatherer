@@ -178,4 +178,4 @@ Run Gemini validation in the background service worker as an asynchronous post-p
   - Makes quota handling explicit instead of hiding it behind optimistic parallel calls.
   - Preserves traceability in exported data even when Gemini is unavailable.
 - Tradeoff:
-  - Some exports will contain a mix of `interesa`, `no_interesa`, `pending`, and `unknown` under free-tier pressure.
+  - Some exports will contain a mix of `interested`, `not_interested`, `pending`, and `unknown` under free-tier pressure.

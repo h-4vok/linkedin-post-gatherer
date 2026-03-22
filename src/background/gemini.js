@@ -137,7 +137,7 @@ function buildGeminiRequest(item, systemInstruction) {
           {
             text: [
               "Decide if this LinkedIn post is interesting for our profile to comment on.",
-              "Return only one token: interesa or no_interesa.",
+              "Return only one token: interested or not_interested.",
               "",
               `author: ${item.author || ""}`,
               `reposted_by: ${item.reposted_by || ""}`,
@@ -155,11 +155,14 @@ function buildGeminiRequest(item, systemInstruction) {
 function parseGeminiDecision(payload) {
   const normalized = extractCandidateText(payload).trim().toLowerCase();
 
-  if (normalized === AI_STATUS.interested) {
+  if (normalized === AI_STATUS.interested || normalized === "interesa") {
     return AI_STATUS.interested;
   }
 
-  if (normalized === AI_STATUS.notInterested) {
+  if (
+    normalized === AI_STATUS.notInterested ||
+    normalized === "no_interesa"
+  ) {
     return AI_STATUS.notInterested;
   }
 
@@ -190,7 +193,7 @@ async function buildGeminiError(response) {
     payload?.error?.message || `Gemini request failed with ${response.status}.`;
   const error = new Error(message);
   error.status = response.status;
-  error.retryAfterMs = getRetryAfterMs(response);
+  error.retryAfterMs = getRetryAfterMs(response, payload);
 
   if (response.status === 429) {
     error.kind = "rate-limited";
@@ -214,18 +217,59 @@ async function buildGeminiError(response) {
   return error;
 }
 
-function getRetryAfterMs(response) {
+function getRetryAfterMs(response, payload) {
   const retryAfter = response.headers.get("retry-after");
 
-  if (!retryAfter) {
+  if (retryAfter) {
+    const parsedSeconds = Number.parseInt(retryAfter, 10);
+
+    if (Number.isFinite(parsedSeconds)) {
+      return parsedSeconds * 1000;
+    }
+  }
+
+  const detailDelay =
+    payload?.error?.details?.find(
+      (detail) => typeof detail?.retryDelay === "string",
+    )?.retryDelay || null;
+
+  const parsedDetailDelay = parseDurationToMs(detailDelay);
+
+  if (parsedDetailDelay != null) {
+    return parsedDetailDelay;
+  }
+
+  return parseRetryDelayFromMessage(payload?.error?.message || "");
+}
+
+function parseRetryDelayFromMessage(message) {
+  const match = String(message || "").match(/retry in\s+([\d.]+)\s*s/i);
+
+  if (!match) {
     return null;
   }
 
-  const parsedSeconds = Number.parseInt(retryAfter, 10);
+  const seconds = Number.parseFloat(match[1]);
 
-  if (!Number.isFinite(parsedSeconds)) {
+  if (!Number.isFinite(seconds)) {
     return null;
   }
 
-  return parsedSeconds * 1000;
+  return Math.ceil(seconds * 1000);
+}
+
+function parseDurationToMs(value) {
+  const match = String(value || "").match(/^([\d.]+)s$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const seconds = Number.parseFloat(match[1]);
+
+  if (!Number.isFinite(seconds)) {
+    return null;
+  }
+
+  return Math.ceil(seconds * 1000);
 }

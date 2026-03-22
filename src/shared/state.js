@@ -432,10 +432,10 @@ function getAiCounts(items) {
     (counts, item) => {
       switch (item?.interest_validation?.status) {
         case AI_STATUS.interested:
-          counts.interesa += 1;
+          counts.interested += 1;
           break;
         case AI_STATUS.notInterested:
-          counts.no_interesa += 1;
+          counts.not_interested += 1;
           break;
         case AI_STATUS.unknown:
           counts.unknown += 1;
@@ -449,8 +449,8 @@ function getAiCounts(items) {
     },
     {
       pending: 0,
-      interesa: 0,
-      no_interesa: 0,
+      interested: 0,
+      not_interested: 0,
       unknown: 0,
     },
   );

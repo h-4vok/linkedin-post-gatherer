@@ -522,6 +522,15 @@ async function runValidationWorker(tabId) {
     await broadcastCountUpdated(tabId, processingState);
 
     const attempts = Number(item.interest_validation?.attempts || 0) + 1;
+    logServiceWorkerEvent("ai-validation-started", {
+      tabId,
+      fingerprint: item.fingerprint,
+      attempts,
+      pendingCount: pendingItems.length,
+      model: config.model,
+      apiKeyPresent: Boolean(config.apiKey),
+      apiKeyLength: config.apiKey?.length || 0,
+    });
 
     try {
       const result = await validatePostInterest(item, config);
@@ -541,8 +550,13 @@ async function runValidationWorker(tabId) {
         fingerprint: item.fingerprint,
         decision: result.status,
         attempts,
+        pendingCount: Math.max(0, pendingItems.length - 1),
       });
       await broadcastCountUpdated(tabId, updatedState);
+      logServiceWorkerEvent("ai-validation-idle-delay", {
+        tabId,
+        delayMs: AI_RATE_LIMIT.baseDelayMs,
+      });
       await delay(AI_RATE_LIMIT.baseDelayMs);
     } catch (error) {
       const normalizedError = normalizeAiError(error);
@@ -564,6 +578,7 @@ async function runValidationWorker(tabId) {
           fingerprint: item.fingerprint,
           kind: normalizedError.kind,
           attempts,
+          message: normalizedError.message,
         });
         await broadcastCountUpdated(tabId, queueState || updatedState);
         continue;
@@ -586,6 +601,8 @@ async function runValidationWorker(tabId) {
         kind: normalizedError.kind,
         attempts,
         retryDelayMs,
+        retryUntil,
+        message: normalizedError.message,
       });
       await broadcastCountUpdated(tabId, queueState);
       await delay(retryDelayMs);
@@ -604,6 +621,11 @@ async function pauseForRateLimit(tabId) {
   const waitMs = new Date(retryAfterUntil).getTime() - Date.now();
 
   if (waitMs > 0) {
+    logServiceWorkerEvent("ai-validation-waiting", {
+      tabId,
+      waitMs,
+      retryAfterUntil,
+    });
     await delay(waitMs);
   }
 }

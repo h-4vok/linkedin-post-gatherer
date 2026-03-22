@@ -1,6 +1,6 @@
 # Backlog
 
-## Item 1: Validacion de relevancia con Gemini AI Studio (API)
+## BL-001: Validacion de relevancia con Gemini AI Studio (API)
 
 Integrar una etapa de validacion posterior al primer filtro del crawler usando la API de Gemini AI Studio, apuntando a un system instruction/Gem ya definido por el equipo.
 Objetivo: decidir si un post ya recolectado realmente nos interesa para comentar bajo nuestro perfil.
@@ -10,7 +10,7 @@ Objetivo: decidir si un post ya recolectado realmente nos interesa para comentar
 - La decision debe quedar registrada junto al post para trazabilidad.
 - El pipeline debe permitir continuar aunque falle la llamada al servicio (fallback controlado).
 
-## Item 2: Categorizacion de "peso" del autor del post
+## BL-002: Categorizacion de "peso" del autor del post
 
 Agregar clasificacion del autor del post para estimar si es un perfil "peso pesado" o no, usando:
 - Titulo/rol (ej.: `CEO`, `CTO`, `VP`, etc.).
@@ -21,7 +21,7 @@ Agregar clasificacion del autor del post para estimar si es un perfil "peso pesa
 - Persistir la categoria calculada por post/autor dentro del flujo normalizado.
 - Dejar preparado el dato para priorizar futuros comentarios o estrategias de interaccion.
 
-## Item 3: Robustez operativa del harvester ante intervencion del usuario y fragilidad del feed
+## BL-003: Robustez operativa del harvester ante intervencion del usuario y fragilidad del feed
 
 Investigar y endurecer el proceso de crawling, que hoy parece sensible a interacciones manuales del usuario y posiblemente a otras condiciones fragiles del feed de LinkedIn.
 
@@ -44,7 +44,7 @@ Caso detectado:
   - crawler interrumpido por el usuario
   - crawler detenido por fragilidad o estancamiento
 
-## Item 4: Recuperar extraccion del link/permalink del post
+## BL-004: Recuperar extraccion del link/permalink del post
 
 Revisar y restaurar la extraccion del link canonico del post en el flujo normalizado del harvester.
 
@@ -57,7 +57,7 @@ Caso detectado:
 - Verificar que el export raw y enriched conserven el permalink correctamente.
 - Agregar cobertura de tests para evitar que vuelva a quedar en `null` sin detectar la regresion.
 
-## Item 5: Normalizar formatter/linter en package.json y rules of engagement
+## BL-005: Normalizar formatter/linter en package.json y rules of engagement
 
 Resolver la desalineacion actual entre documentacion y tooling: el repo exige `npm run lint`, `npm run format` y `npm run format:write` en README, checklist y repo rules, pero esos scripts no existen hoy en `package.json`.
 
@@ -67,7 +67,7 @@ Resolver la desalineacion actual entre documentacion y tooling: el repo exige `n
 - Definir si esos checks deben correr en `pre-push`, `pre-commit` o solo en CI, y dejarlo implementado/documentado.
 - Asegurar que la merge gate documentada coincide con la automatizacion real del repo.
 
-## Item 6: Export de posts ignorados para debugging del extractor
+## BL-006: Export de posts ignorados para debugging del extractor
 
 Agregar una capacidad de export o dump de los posts que el harvester detecta pero termina ignorando, para poder revisar despues los casos descartados y depurar mejor cambios de DOM o heuristicas demasiado agresivas.
 
@@ -79,3 +79,58 @@ Agregar una capacidad de export o dump de los posts que el harvester detecta per
   - `textPreview`
   - fragmento HTML truncado o metadata relevante
 - Mantener esta capacidad orientada a debugging, sin mezclar los posts ignorados con el export normal `raw` o `enriched`.
+
+## BL-007: Mini tutorial dentro del plugin para configurar Gemini / Google AI Studio
+
+Agregar una guia breve y accionable dentro del propio plugin para ayudar al operador a configurar la integracion con Gemini sin depender del README ni de conocimiento previo sobre Google AI Studio.
+
+Caso detectado:
+- Hoy el popup expone los campos `API key`, `Model` y `System instruction`, pero no explica dentro de la extension que pasos seguir, donde conseguir cada valor ni en que orden probar la configuracion.
+
+### Resultado esperado
+- Incluir una mini tutorial visible desde el popup o una ayuda inline en la seccion de Gemini setup.
+- Explicar paso a paso como:
+  - entrar a Google AI Studio
+  - crear o ubicar la API key
+  - identificar que valor pegar en `API key`
+- que modelo usar como default inicial
+- de donde sale la `System instruction` y cuando conviene cambiarla
+- Dejar claro un flujo de prueba corto para validar que la configuracion funciona antes de correr una exportacion grande.
+- Mantener el contenido breve, orientado a operador, y actualizado junto con cualquier cambio futuro en los campos del popup.
+
+## BL-008: Conservar mas historial en el activity log
+
+Revisar el comportamiento actual del activity log porque hoy se limpia o rota demasiado rapido, y despues de aproximadamente `4` items deja de mostrar historial util para seguimiento de la corrida.
+
+Caso detectado:
+- El operador pierde visibilidad de eventos recientes porque el log visible se recorta enseguida.
+- Esto dificulta entender que hizo el crawler, cuando entro en espera, si hubo reintentos o en que punto cambio el estado.
+
+### Resultado esperado
+- Aumentar o rediseñar la retencion del activity log para conservar suficiente historial visible durante una corrida normal.
+- Definir una politica explicita de retencion:
+  - cantidad maxima de items visibles
+  - si el recorte aplica solo a UI o tambien al estado en memoria
+- si conviene agregar scroll interno, paginacion o acciones de clear manual
+- Asegurar que el operador pueda inspeccionar una secuencia razonable de eventos sin perder contexto por rotacion temprana.
+- Mantener el log legible y sin crecimiento descontrolado durante corridas largas.
+
+## BL-009: Mostrar actividad de AI validation en el activity log
+
+Agregar visibilidad en el activity log cuando la validacion con AI esta habilitada y el sistema esta usando Gemini para filtrar o clasificar posts.
+
+Caso detectado:
+- Hoy el operador no necesariamente ve en el activity log que el filtro con AI esta corriendo, avanzando, esperando por rate limit o fallando con fallback.
+- Eso vuelve opaco el comportamiento del pipeline cuando la cola de AI influye en el resultado exportado.
+
+### Resultado esperado
+- Registrar en el activity log eventos relevantes del flujo de AI validation, por ejemplo:
+  - inicio de procesamiento
+  - post en validacion
+  - decision recibida
+  - retry o backoff por cuota/rate limit
+  - fallback a `unknown`
+  - fin o pausa de la cola
+- Hacer que los mensajes sean entendibles para operador, no solo tecnicos para debugging interno.
+- Mantener alineados el activity log, el estado visible de AI y el resultado persistido en `interest_validation`.
+- Evitar ruido excesivo si la corrida procesa muchos posts, definiendo un nivel de detalle razonable.

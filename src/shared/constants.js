@@ -19,8 +19,8 @@ export const SCROLL_DELAY_MAX_MS = 3500;
 export const AI_VALIDATION_SOURCE = "gemini";
 export const AI_STATUS = {
   pending: "pending",
-  interested: "interesa",
-  notInterested: "no_interesa",
+  interested: "interested",
+  notInterested: "not_interested",
   unknown: "unknown",
 };
 export const AI_QUEUE_PHASES = {
@@ -31,15 +31,15 @@ export const AI_QUEUE_PHASES = {
   configError: "config-error",
 };
 export const AI_RATE_LIMIT = {
-  baseDelayMs: 4000,
-  defaultBackoffMs: 15000,
-  quotaCooldownMs: 60000,
+  baseDelayMs: 12000,
+  defaultBackoffMs: 30000,
+  quotaCooldownMs: 120000,
   maxAttempts: 3,
 };
 export const AI_DEFAULT_CONFIG = {
   enabled: false,
   apiKey: "",
-  model: "gemini-2.0-flash",
+  model: "gemini-2.5-flash",
   systemInstruction: DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
 };
 

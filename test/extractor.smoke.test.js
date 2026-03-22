@@ -261,8 +261,8 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(secondMerge.addedCount).toBe(0);
     expect(getSerializableState(101).aiCounts).toEqual({
       pending: 7,
-      interesa: 0,
-      no_interesa: 0,
+      interested: 0,
+      not_interested: 0,
       unknown: 0,
     });
     expect(firstMerge.state.items[0].interest_validation.status).toBe(
