@@ -13,7 +13,7 @@ Repository-specific working rules for `linkedin-post-gatherer`. This file applie
 - The official stack is `JavaScript` + `Vite` + `ESLint` + `Prettier` + `Vitest`.
 - The current product goal is user-triggered crawling of the LinkedIn home feed and local generation of a final `JSON` payload for later AI analysis.
 - The MVP is a single-browser workflow with a floating in-page panel, popup backup UI, LinkedIn content script, background coordination, and tab-scoped session persistence.
-- This phase does not send emails, post comments, or transmit gathered data to external APIs.
+- This phase does not send emails or post comments. It may call Gemini AI Studio for post-validation when AI review is enabled.
 
 ## Target Architecture
 
@@ -91,6 +91,7 @@ Recommended local order before commit:
   - `is_repost`
   - `type`
   - `extracted_at`
+- AI-enriched exports may also include a persisted `interest_validation` block with Gemini-derived status or controlled fallback state.
 - Treat crawler operational logs in the service worker as the primary debug stream for run control, scrolling, and stop conditions.
 - When requirements contain naming mistakes, internal docs should use the corrected canonical field name rather than copying the typo into long-term contracts.
 

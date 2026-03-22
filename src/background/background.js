@@ -1,10 +1,12 @@
 import {
+  AI_QUEUE_PHASES,
+  AI_RATE_LIMIT,
+  AI_STATUS,
   ENRICHMENT_STATES,
   MESSAGE_TYPES,
   NO_PROGRESS_LIMIT,
   RUN_STATES,
   STALLED_WAIT_LIMIT,
-  STATUS_TEXT,
   STORAGE_KEYS,
 } from "../shared/constants.js";
 import {
@@ -17,6 +19,15 @@ import {
   toRawExportItem,
 } from "../shared/export.js";
 import {
+  buildValidationResult,
+  getAiConfig,
+  getAiConfigError,
+  getRetryDelayMs,
+  saveAiConfig,
+  shouldRetryGeminiError,
+  validatePostInterest,
+} from "./gemini.js";
+import {
   applyCrawlerProgress,
   cancelEnrichment,
   clearTabState,
@@ -25,18 +36,23 @@ import {
   failEnrichment,
   finalizeStopCrawler,
   getEnrichedItems,
+  getPendingValidationItems,
   getSerializableState,
   markFeedReady,
   mergeNewItems,
   persistState,
+  resetDebugState,
   requestStopCrawler,
+  setAiQueueState,
   setTargetCount,
   startEnrichment,
   startCrawler,
   updateEnrichmentProgress,
+  updateInterestValidation,
 } from "../shared/state.js";
 
 const activeEnrichments = new Map();
+const validationWorkers = new Map();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearTabState(tabId);
@@ -63,9 +79,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 async function handleMessage(message, sender) {
   const tabId = resolveTabId(message, sender);
+  const tablessMessageTypes = new Set([
+    MESSAGE_TYPES.getAiConfig,
+    MESSAGE_TYPES.setAiConfig,
+  ]);
 
   if (
     tabId == null &&
+    !tablessMessageTypes.has(message?.type) &&
     message?.type !== MESSAGE_TYPES.exportRawRequest &&
     message?.type !== MESSAGE_TYPES.exportEnrichedRequest
   ) {
@@ -80,6 +101,20 @@ async function handleMessage(message, sender) {
     case MESSAGE_TYPES.getState: {
       const state = getSerializableState(tabId);
       return { ok: true, state, tabId };
+    }
+
+    case MESSAGE_TYPES.resetDebugRequest: {
+      const activeRun = activeEnrichments.get(tabId);
+
+      if (activeRun) {
+        activeRun.cancelled = true;
+      }
+
+      const state = await resetDebugState(tabId);
+      logServiceWorkerEvent("debug-reset-requested", { tabId });
+      await sendCrawlerCommand(tabId, "reset");
+      await broadcastCountUpdated(tabId, state);
+      return { ok: true, state };
     }
 
     case MESSAGE_TYPES.feedReady: {
@@ -168,8 +203,26 @@ async function handleMessage(message, sender) {
         addedCount: mergeResult.addedCount,
         totalCount: state.count,
       });
+      void ensureValidationWorker(tabId);
       await broadcastCountUpdated(tabId, state);
       return { ok: true, addedCount: mergeResult.addedCount, state };
+    }
+
+    case MESSAGE_TYPES.getAiConfig: {
+      const config = await getAiConfig();
+      return { ok: true, config };
+    }
+
+    case MESSAGE_TYPES.setAiConfig: {
+      const config = await saveAiConfig(message.config);
+      logServiceWorkerEvent("ai-config-updated", {
+        enabled: config.enabled,
+        model: config.model,
+      });
+      if (tabId != null) {
+        void ensureValidationWorker(tabId);
+      }
+      return { ok: true, config };
     }
 
     case MESSAGE_TYPES.crawlerProgress: {
@@ -340,10 +393,23 @@ async function broadcastCountUpdated(tabId, state) {
     noProgressCycles: state.noProgressCycles,
     stalledWaitCount: state.stalledWaitCount,
     enrichment: state.enrichment,
+    aiCounts: state.aiCounts,
+    aiQueue: state.aiQueue,
   };
 
   try {
     await chrome.runtime.sendMessage(payload);
+  } catch {
+    // Popup listeners are optional and often disconnected.
+  }
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.aiStatusUpdated,
+      tabId,
+      aiCounts: state.aiCounts,
+      aiQueue: state.aiQueue,
+    });
   } catch {
     // Popup listeners are optional and often disconnected.
   }
@@ -401,6 +467,167 @@ async function sendCrawlerCommand(tabId, action, payload = {}) {
 
 function logServiceWorkerEvent(event, payload = {}) {
   console.log("[harvester][service-worker]", event, payload);
+}
+
+function ensureValidationWorker(tabId) {
+  if (validationWorkers.has(tabId)) {
+    return validationWorkers.get(tabId);
+  }
+
+  const worker = runValidationWorker(tabId).finally(() => {
+    validationWorkers.delete(tabId);
+  });
+  validationWorkers.set(tabId, worker);
+  return worker;
+}
+
+async function runValidationWorker(tabId) {
+  while (true) {
+    const pendingItems = getPendingValidationItems(tabId);
+
+    if (!pendingItems.length) {
+      const idleState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.idle,
+        retryAfterUntil: null,
+        lastError: null,
+      });
+      await broadcastCountUpdated(tabId, idleState);
+      return;
+    }
+
+    const item = pendingItems[0];
+    const config = await getAiConfig();
+    const configError = getAiConfigError(config);
+
+    if (configError) {
+      const queueState = await setAiQueueState(tabId, {
+        phase: config.enabled
+          ? AI_QUEUE_PHASES.configError
+          : AI_QUEUE_PHASES.disabled,
+        retryAfterUntil: null,
+        lastError: configError,
+      });
+      await broadcastCountUpdated(tabId, queueState);
+      return;
+    }
+
+    await pauseForRateLimit(tabId);
+
+    const processingState = await setAiQueueState(tabId, {
+      phase: AI_QUEUE_PHASES.processing,
+      retryAfterUntil: null,
+      lastError: null,
+      lastRequestAt: new Date().toISOString(),
+    });
+    await broadcastCountUpdated(tabId, processingState);
+
+    const attempts = Number(item.interest_validation?.attempts || 0) + 1;
+    logServiceWorkerEvent("ai-validation-started", {
+      tabId,
+      fingerprint: item.fingerprint,
+      attempts,
+      pendingCount: pendingItems.length,
+      model: config.model,
+      apiKeyPresent: Boolean(config.apiKey),
+      apiKeyLength: config.apiKey?.length || 0,
+    });
+
+    try {
+      const result = await validatePostInterest(item, config);
+      const updatedState = await updateInterestValidation(
+        tabId,
+        item.fingerprint,
+        buildValidationResult(result.status, attempts, null),
+      );
+      await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.processing,
+        retryAfterUntil: null,
+        lastError: null,
+        lastRequestAt: new Date().toISOString(),
+      });
+      logServiceWorkerEvent("ai-validation-completed", {
+        tabId,
+        fingerprint: item.fingerprint,
+        decision: result.status,
+        attempts,
+        pendingCount: Math.max(0, pendingItems.length - 1),
+      });
+      await broadcastCountUpdated(tabId, updatedState);
+      logServiceWorkerEvent("ai-validation-idle-delay", {
+        tabId,
+        delayMs: AI_RATE_LIMIT.baseDelayMs,
+      });
+      await delay(AI_RATE_LIMIT.baseDelayMs);
+    } catch (error) {
+      const normalizedError = normalizeAiError(error);
+      const shouldRetry = shouldRetryGeminiError(normalizedError, attempts);
+
+      if (!shouldRetry) {
+        const updatedState = await updateInterestValidation(
+          tabId,
+          item.fingerprint,
+          buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind),
+        );
+        const queueState = await setAiQueueState(tabId, {
+          phase: AI_QUEUE_PHASES.idle,
+          retryAfterUntil: null,
+          lastError: normalizedError.message,
+        });
+        logServiceWorkerEvent("ai-validation-failed", {
+          tabId,
+          fingerprint: item.fingerprint,
+          kind: normalizedError.kind,
+          attempts,
+          message: normalizedError.message,
+        });
+        await broadcastCountUpdated(tabId, queueState || updatedState);
+        continue;
+      }
+
+      const retryDelayMs = getRetryDelayMs(normalizedError, attempts);
+      const retryUntil = new Date(Date.now() + retryDelayMs).toISOString();
+      await updateInterestValidation(tabId, item.fingerprint, {
+        attempts,
+        error: normalizedError.kind,
+      });
+      const queueState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.backingOff,
+        retryAfterUntil: retryUntil,
+        lastError: normalizedError.message,
+      });
+      logServiceWorkerEvent("ai-validation-backoff", {
+        tabId,
+        fingerprint: item.fingerprint,
+        kind: normalizedError.kind,
+        attempts,
+        retryDelayMs,
+        retryUntil,
+        message: normalizedError.message,
+      });
+      await broadcastCountUpdated(tabId, queueState);
+      await delay(retryDelayMs);
+    }
+  }
+}
+
+async function pauseForRateLimit(tabId) {
+  const state = getSerializableState(tabId);
+  const retryAfterUntil = state.aiQueue?.retryAfterUntil;
+
+  if (!retryAfterUntil) {
+    return;
+  }
+
+  const waitMs = new Date(retryAfterUntil).getTime() - Date.now();
+
+  if (waitMs > 0) {
+    logServiceWorkerEvent("ai-validation-waiting", {
+      tabId,
+      waitMs,
+      retryAfterUntil,
+    });
+    await delay(waitMs);
+  }
 }
 
 async function runEnrichment(tabId) {
@@ -597,7 +824,7 @@ async function extractProfileSignals(profileUrl) {
 
   try {
     await waitForTabLoad(profileTab.id);
-    await wait(800);
+    await delay(800);
 
     const response = await chrome.tabs.sendMessage(profileTab.id, {
       type: MESSAGE_TYPES.profileExtractRequest,
@@ -634,10 +861,6 @@ function waitForTabLoad(tabId) {
   });
 }
 
-function wait(durationMs) {
-  return new Promise((resolve) => setTimeout(resolve, durationMs));
-}
-
 async function downloadJsonExport({ items, filename }) {
   const json = JSON.stringify(items, null, 2);
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
@@ -657,4 +880,24 @@ async function downloadJsonExport({ items, filename }) {
     filename,
     count: items.length,
   };
+}
+
+function normalizeAiError(error) {
+  if (error?.kind) {
+    return error;
+  }
+
+  const nextError = new Error(error?.message || "Unexpected AI validation error.");
+  nextError.kind = "network-error";
+  return nextError;
+}
+
+function delay(ms) {
+  if (!ms || ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

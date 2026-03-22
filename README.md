@@ -8,6 +8,7 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - Browsers: `Chrome`, `Brave`
 - Stack: `JavaScript` + `Vite`
 - UI: floating control console plus popup backup, with quick target presets, live metrics, and activity log
+- AI validation: optional Gemini AI Studio review from the popup, with free-tier-aware serial processing and fallback states
 - Product mode: local collection and local export only
 
 This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
@@ -25,10 +26,12 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - Scroll in randomized increments between `400px` and `600px`
 - Wait randomized delays between `1.5s` and `3.5s`
 - Stop automatically at a user-defined accepted-post target with default `50` and supported range `1-200`
-- When LinkedIn stops yielding new accepted posts, pause for up to `5m` and retry multiple times before declaring the feed stalled
+- When LinkedIn stops yielding new accepted posts, pause for up to `20s` and retry multiple times before declaring the feed stalled
 - Export a local file named `linkedin_dump_[date].json`
 - Offer both `Export raw` for the current batch and `Export enriched` for a sequential author-enrichment pass with visible progress
 - Enrich author metadata with `author_role`, `author_followers`, and `author_weight`
+- Optionally enrich each captured post with `interest_validation` using Gemini AI Studio
+- Keep AI validation resilient under the Google AI Studio free tier by processing one post at a time with backoff on quota/rate pressure
 
 ## Expected Workflow
 
@@ -38,7 +41,8 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 4. Press `Start` to begin crawler-driven scrolling and collection.
 5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
 6. Press `Stop` at any time or let the crawler stop automatically at the target.
-7. Export the current raw batch immediately, or start enriched export and monitor post/author progress until the enriched `JSON` is ready.
+7. Optionally configure Gemini in the popup and let the validation queue classify captured posts.
+8. Export the current raw batch immediately, or start enriched export and monitor post/author progress until the enriched `JSON` is ready.
 
 ## Standard Commands
 
@@ -57,4 +61,5 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - `CODEX_PROJECT.md`: runtime contracts and architecture intent
 - `CODEX_STRUCTURE.md`: expected code layout
 - `DECISIONS.md`: ADRs
+- `docs/debugging/linkedin-feed-dump.md`: manual DOM drift debugging runbook
 - `docs/diagrams/`: architecture and flow diagrams

@@ -1,4 +1,7 @@
 import {
+  AI_QUEUE_PHASES,
+  AI_STATUS,
+  AI_VALIDATION_SOURCE,
   ENRICHMENT_STATES,
   RUN_STATES,
   STATUS_TEXT,
@@ -28,6 +31,15 @@ function createEmptyEnrichmentState() {
   };
 }
 
+function createEmptyAiQueueState() {
+  return {
+    phase: AI_QUEUE_PHASES.idle,
+    retryAfterUntil: null,
+    lastRequestAt: null,
+    lastError: null,
+  };
+}
+
 function createEmptyState() {
   return {
     itemsByFingerprint: new Map(),
@@ -39,6 +51,7 @@ function createEmptyState() {
     stalledWaitCount: 0,
     lastReason: null,
     enrichment: createEmptyEnrichmentState(),
+    aiQueue: createEmptyAiQueueState(),
   };
 }
 
@@ -64,9 +77,9 @@ function buildFallbackFingerprint(item) {
 
 export function getSerializableState(tabId) {
   const tabState = getOrCreateTabState(tabId);
-  const items = Array.from(tabState.itemsByFingerprint.values()).map(
-    ({ fingerprint, ...item }) => item,
-  );
+  const itemsWithFingerprint = Array.from(tabState.itemsByFingerprint.values());
+  const items = itemsWithFingerprint.map(({ fingerprint, ...item }) => item);
+  const aiCounts = getAiCounts(itemsWithFingerprint);
 
   return {
     items,
@@ -80,12 +93,34 @@ export function getSerializableState(tabId) {
     lastReason: tabState.lastReason,
     enrichedItems: tabState.enrichedItems.map(({ fingerprint, ...item }) => item),
     enrichment: { ...tabState.enrichment },
+    aiCounts,
+    aiQueue: { ...tabState.aiQueue, pendingCount: aiCounts.pending },
   };
+}
+
+export function getExportItems(tabId) {
+  return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).map(
+    ({ fingerprint, ...item }) => item,
+  );
 }
 
 export function markStatus(tabId, status) {
   const tabState = getOrCreateTabState(tabId);
   tabState.status = status;
+  return persistState(tabId);
+}
+
+export function resetDebugState(tabId) {
+  const tabState = getOrCreateTabState(tabId);
+  const preservedTargetCount = tabState.targetCount;
+
+  tabStates.set(tabId, {
+    ...createEmptyState(),
+    targetCount: preservedTargetCount,
+    status: STATUS_TEXT.attached,
+    runState: RUN_STATES.idle,
+  });
+
   return persistState(tabId);
 }
 
@@ -166,6 +201,7 @@ export function applyCrawlerProgress(
 export function mergeNewItems(tabId, items) {
   const tabState = getOrCreateTabState(tabId);
   let addedCount = 0;
+  const addedFingerprints = [];
 
   for (const item of items) {
     if (!item?.fingerprint) {
@@ -176,8 +212,13 @@ export function mergeNewItems(tabId, items) {
       continue;
     }
 
-    tabState.itemsByFingerprint.set(item.fingerprint, item);
+    tabState.itemsByFingerprint.set(item.fingerprint, {
+      ...item,
+      interest_validation:
+        item.interest_validation || createPendingInterestValidation(),
+    });
     addedCount += 1;
+    addedFingerprints.push(item.fingerprint);
   }
 
   if (addedCount > 0) {
@@ -186,8 +227,44 @@ export function mergeNewItems(tabId, items) {
 
   return {
     addedCount,
+    addedFingerprints,
     state: getSerializableState(tabId),
   };
+}
+
+export function getPendingValidationItems(tabId) {
+  return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).filter(
+    (item) => item?.interest_validation?.status === AI_STATUS.pending,
+  );
+}
+
+export function updateInterestValidation(tabId, fingerprint, validationPatch) {
+  const tabState = getOrCreateTabState(tabId);
+  const currentItem = tabState.itemsByFingerprint.get(fingerprint);
+
+  if (!currentItem) {
+    return persistState(tabId);
+  }
+
+  tabState.itemsByFingerprint.set(fingerprint, {
+    ...currentItem,
+    interest_validation: {
+      ...createPendingInterestValidation(),
+      ...currentItem.interest_validation,
+      ...validationPatch,
+    },
+  });
+
+  return persistState(tabId);
+}
+
+export function setAiQueueState(tabId, queuePatch) {
+  const tabState = getOrCreateTabState(tabId);
+  tabState.aiQueue = {
+    ...tabState.aiQueue,
+    ...queuePatch,
+  };
+  return persistState(tabId);
 }
 
 export function startEnrichment(
@@ -291,7 +368,12 @@ export async function hydrateStateFromStorage(tabId) {
       continue;
     }
 
-    tabState.itemsByFingerprint.set(fingerprint, { ...item, fingerprint });
+    tabState.itemsByFingerprint.set(fingerprint, {
+      ...item,
+      fingerprint,
+      interest_validation:
+        item?.interest_validation || createPendingInterestValidation(),
+    });
   }
 
   tabState.enrichedItems = Array.isArray(storedState?.enrichedItems)
@@ -307,6 +389,10 @@ export async function hydrateStateFromStorage(tabId) {
   tabState.enrichment = {
     ...createEmptyEnrichmentState(),
     ...(storedState?.enrichment || {}),
+  };
+  tabState.aiQueue = {
+    ...createEmptyAiQueueState(),
+    ...(storedState?.aiQueue || {}),
   };
   tabStates.set(tabId, tabState);
 
@@ -329,4 +415,43 @@ export async function clearTabState(tabId) {
 function resetEnrichmentState(tabState) {
   tabState.enrichedItems = [];
   tabState.enrichment = createEmptyEnrichmentState();
+}
+
+function createPendingInterestValidation() {
+  return {
+    status: AI_STATUS.pending,
+    source: AI_VALIDATION_SOURCE,
+    attempts: 0,
+    validated_at: null,
+    error: null,
+  };
+}
+
+function getAiCounts(items) {
+  return items.reduce(
+    (counts, item) => {
+      switch (item?.interest_validation?.status) {
+        case AI_STATUS.interested:
+          counts.interested += 1;
+          break;
+        case AI_STATUS.notInterested:
+          counts.not_interested += 1;
+          break;
+        case AI_STATUS.unknown:
+          counts.unknown += 1;
+          break;
+        default:
+          counts.pending += 1;
+          break;
+      }
+
+      return counts;
+    },
+    {
+      pending: 0,
+      interested: 0,
+      not_interested: 0,
+      unknown: 0,
+    },
+  );
 }

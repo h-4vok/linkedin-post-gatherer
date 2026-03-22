@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
 import {
+  analyzePostElement,
   extractAuthor,
   extractAuthorProfileUrl,
   extractPostedTime,
@@ -9,9 +10,11 @@ import {
   findFeedContainer,
   findPostElements,
   isPromotedPost,
+  isSuggestedPost,
   scanFeedPosts,
 } from "../src/shared/extractor.js";
-import { mergeNewItems } from "../src/shared/state.js";
+import { AI_STATUS } from "../src/shared/constants.js";
+import { getSerializableState, mergeNewItems } from "../src/shared/state.js";
 
 const FEED_FIXTURE = `
   <div componentkey="container-update-list_mainFeed-lazy-container">
@@ -84,6 +87,31 @@ const FEED_FIXTURE = `
         </span>
       </div>
     </div>
+    <div role="listitem" data-post-id="suggested-post">
+      <div>
+        <p>Suggested</p>
+        <a href="https://www.linkedin.com/in/muhammadhaseeb-ai/">Muhammad Haseeb</a>
+        <div aria-label="Muhammad Haseeb, Open to work 3rd+"></div>
+        <p>15h •</p>
+      </div>
+      <span data-testid="expandable-text-box">Should be skipped as suggested.</span>
+    </div>
+    <div role="listitem" data-post-id="aria-label-author">
+      <div>
+        <a href="https://www.linkedin.com/in/pattyfonacier/">Patty Fonacier</a>
+        <div aria-label="Patty Fonacier Premium Profile 1st"></div>
+        <p>21h • Edited •</p>
+      </div>
+      <span data-testid="expandable-text-box">Author should come from aria-label.</span>
+    </div>
+    <div role="listitem" data-post-id="paragraph-relationship">
+      <div>
+        <a href="https://www.linkedin.com/in/muhammadhaseeb-ai/">Muhammad Haseeb</a>
+        <p>Muhammad Haseeb • 3rd+</p>
+        <p>15h •</p>
+      </div>
+      <span data-testid="expandable-text-box">Author should come from paragraph marker.</span>
+    </div>
   </div>
 `;
 
@@ -97,7 +125,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const container = findFeedContainer(document);
 
     expect(container).not.toBeNull();
-    expect(findPostElements(container)).toHaveLength(7);
+    expect(findPostElements(container)).toHaveLength(10);
   });
 
   it("filters promoted content", () => {
@@ -108,6 +136,17 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(isPromotedPost(posts[0])).toBe(false);
   });
 
+  it("filters suggested content separately from promoted posts", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(isSuggestedPost(posts[7])).toBe(true);
+    expect(analyzePostElement(posts[7])).toEqual({
+      status: "skipped",
+      reason: "suggested",
+    });
+  });
+
   it("extracts the author from relationship markers", () => {
     const document = setupDocument();
     const posts = findPostElements(findFeedContainer(document));
@@ -116,6 +155,8 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[2])).toBe("Ada Lovelace");
     expect(extractAuthor(posts[4])).toBe("Kelsey Hightower");
     expect(extractAuthor(posts[6])).toBe("Cruz Gamboa");
+    expect(extractAuthor(posts[8])).toBe("Patty Fonacier");
+    expect(extractAuthor(posts[9])).toBe("Muhammad Haseeb");
   });
 
   it("extracts the author profile url when it is present in the post", () => {
@@ -171,9 +212,10 @@ describe("LinkedIn feed smoke extraction", () => {
     });
     const secondPass = scanFeedPosts(container, { processedElements });
 
-    expect(firstPass.acceptedItems).toHaveLength(5);
+    expect(firstPass.acceptedItems).toHaveLength(7);
     expect(firstPass.skippedItems).toContain("promoted");
     expect(firstPass.skippedItems).toContain("missing-author");
+    expect(firstPass.skippedItems).toContain("suggested");
     expect(firstPass.acceptedItems[0]).toMatchObject({
       author: "Gonzalo Corbijn",
       author_profile_url: "https://www.linkedin.com/in/gonzalo-corbijn/",
@@ -193,6 +235,14 @@ describe("LinkedIn feed smoke extraction", () => {
       is_repost: false,
       reposted_by: null,
     });
+    expect(firstPass.acceptedItems[5]).toMatchObject({
+      author: "Patty Fonacier",
+      post_text: "Author should come from aria-label.",
+    });
+    expect(firstPass.acceptedItems[6]).toMatchObject({
+      author: "Muhammad Haseeb",
+      post_text: "Author should come from paragraph marker.",
+    });
     expect(secondPass.acceptedItems).toHaveLength(0);
   });
 
@@ -207,7 +257,16 @@ describe("LinkedIn feed smoke extraction", () => {
     const firstMerge = mergeNewItems(101, acceptedItems);
     const secondMerge = mergeNewItems(101, acceptedItems);
 
-    expect(firstMerge.addedCount).toBe(5);
+    expect(firstMerge.addedCount).toBe(7);
     expect(secondMerge.addedCount).toBe(0);
+    expect(getSerializableState(101).aiCounts).toEqual({
+      pending: 7,
+      interested: 0,
+      not_interested: 0,
+      unknown: 0,
+    });
+    expect(firstMerge.state.items[0].interest_validation.status).toBe(
+      AI_STATUS.pending,
+    );
   });
 });
