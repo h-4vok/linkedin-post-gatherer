@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
+import { readFileSync } from "node:fs";
 import {
   analyzePostElement,
   extractAuthor,
@@ -18,6 +19,10 @@ import {
 } from "../src/shared/extractor.js";
 import { AI_STATUS } from "../src/shared/constants.js";
 import { getSerializableState, mergeNewItems } from "../src/shared/state.js";
+
+const REAL_FEED_FIXTURE = JSON.parse(
+  readFileSync("test/fixtures/linkedin-feedcurrent-2026-03-23.json", "utf8"),
+);
 
 const FEED_FIXTURE = `
   <div componentkey="container-update-list_mainFeed-lazy-container">
@@ -96,6 +101,28 @@ const FEED_FIXTURE = `
         </span>
       </div>
     </div>
+    <div role="listitem" data-post-id="likes-this-post">
+      <div>
+        <p>Rob Sandberg likes this</p>
+      </div>
+      <div>
+        <a href="https://www.linkedin.com/in/maarten-dalmijn/">Maarten Dalmijn</a>
+        <p>Maarten Dalmijn â€¢ 2nd</p>
+        <p>5d â€¢</p>
+      </div>
+      <span data-testid="expandable-text-box">Current social header should not count as repost.</span>
+    </div>
+    <div role="listitem" data-post-id="repost-social-header">
+      <div>
+        <p>Rob Sandberg reposted this</p>
+      </div>
+      <div>
+        <a href="https://www.linkedin.com/in/liz-fong-jones/">Liz Fong-Jones</a>
+        <p>Liz Fong-Jones â€¢ 3rd+</p>
+        <p>5h â€¢</p>
+      </div>
+      <span data-testid="expandable-text-box">Current repost social header should resolve sharer separately.</span>
+    </div>
     <div role="listitem" data-post-id="suggested-post">
       <div>
         <p>Suggested</p>
@@ -131,7 +158,27 @@ const FEED_FIXTURE = `
 `;
 
 function setupDocument() {
-  return new JSDOM(FEED_FIXTURE).window.document;
+  return new JSDOM(FEED_FIXTURE, {
+    url: "https://www.linkedin.com/feed/",
+  }).window.document;
+}
+
+function setupRealFeedDocument() {
+  const feedHtml = `
+    <div componentkey="container-update-list_mainFeed-lazy-container">
+      ${REAL_FEED_FIXTURE.posts.map((post) => post.html).join("\n")}
+    </div>
+  `;
+
+  return new JSDOM(feedHtml, {
+    url: "https://www.linkedin.com/feed/",
+  }).window.document;
+}
+
+function setupRealFeedPost(postIndex) {
+  return new JSDOM(REAL_FEED_FIXTURE.posts[postIndex].html, {
+    url: "https://www.linkedin.com/feed/",
+  }).window.document.querySelector('div[role="listitem"]');
 }
 
 describe("LinkedIn feed smoke extraction", () => {
@@ -140,7 +187,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const container = findFeedContainer(document);
 
     expect(container).not.toBeNull();
-    expect(findPostElements(container)).toHaveLength(10);
+    expect(findPostElements(container)).toHaveLength(12);
   });
 
   it("filters promoted content", () => {
@@ -155,8 +202,8 @@ describe("LinkedIn feed smoke extraction", () => {
     const document = setupDocument();
     const posts = findPostElements(findFeedContainer(document));
 
-    expect(isSuggestedPost(posts[7])).toBe(true);
-    expect(analyzePostElement(posts[7])).toMatchObject({
+    expect(isSuggestedPost(posts[9])).toBe(true);
+    expect(analyzePostElement(posts[9])).toMatchObject({
       status: "accepted",
       item: {
         author: "Muhammad Haseeb",
@@ -173,8 +220,10 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[2])).toBe("Ada Lovelace");
     expect(extractAuthor(posts[4])).toBe("Kelsey Hightower");
     expect(extractAuthor(posts[6])).toBe("Cruz Gamboa");
-    expect(extractAuthor(posts[8])).toBe("Patty Fonacier");
-    expect(extractAuthor(posts[9])).toBe("Muhammad Haseeb");
+    expect(extractAuthor(posts[7])).toBe("Maarten Dalmijn");
+    expect(extractAuthor(posts[8])).toBe("Liz Fong-Jones");
+    expect(extractAuthor(posts[10])).toBe("Patty Fonacier");
+    expect(extractAuthor(posts[11])).toBe("Muhammad Haseeb");
   });
 
   it("extracts the author profile url when it is present in the post", () => {
@@ -210,6 +259,14 @@ describe("LinkedIn feed smoke extraction", () => {
       is_repost: false,
       reposted_by: null,
     });
+    expect(extractRepostMetadata(posts[7], extractAuthor(posts[7]))).toEqual({
+      is_repost: false,
+      reposted_by: null,
+    });
+    expect(extractRepostMetadata(posts[8], extractAuthor(posts[8]))).toEqual({
+      is_repost: true,
+      reposted_by: "Rob Sandberg",
+    });
   });
 
   it("extracts post text from the preloaded expandable text box", () => {
@@ -241,7 +298,7 @@ describe("LinkedIn feed smoke extraction", () => {
     });
     const secondPass = scanFeedPosts(container, { processedElements });
 
-    expect(firstPass.acceptedItems).toHaveLength(8);
+    expect(firstPass.acceptedItems).toHaveLength(10);
     expect(firstPass.skippedItems).toContain("promoted");
     expect(firstPass.skippedItems).toContain("missing-author");
     expect(firstPass.acceptedItems[0]).toMatchObject({
@@ -276,6 +333,29 @@ describe("LinkedIn feed smoke extraction", () => {
       reposted_by: null,
     });
     expect(
+      firstPass.acceptedItems.find((item) => item.author === "Maarten Dalmijn"),
+    ).toMatchObject({
+      is_repost: false,
+      reposted_by: null,
+    });
+    expect(
+      firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones"),
+    ).toMatchObject({
+      is_repost: true,
+      reposted_by: "Charity Majors",
+    });
+    expect(
+      firstPass.acceptedItems.find(
+        (item) =>
+          item.post_text ===
+          "Current repost social header should resolve sharer separately.",
+      ),
+    ).toMatchObject({
+      author: "Liz Fong-Jones",
+      is_repost: true,
+      reposted_by: "Rob Sandberg",
+    });
+    expect(
       firstPass.acceptedItems.find((item) => item.author === "Patty Fonacier"),
     ).toMatchObject({
       author: "Patty Fonacier",
@@ -302,10 +382,10 @@ describe("LinkedIn feed smoke extraction", () => {
     const firstMerge = mergeNewItems(101, acceptedItems);
     const secondMerge = mergeNewItems(101, acceptedItems);
 
-    expect(firstMerge.addedCount).toBe(8);
+    expect(firstMerge.addedCount).toBe(10);
     expect(secondMerge.addedCount).toBe(0);
     expect(getSerializableState(101).aiCounts).toEqual({
-      pending: 8,
+      pending: 10,
       interested: 0,
       not_interested: 0,
       unknown: 0,
@@ -313,5 +393,34 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(firstMerge.state.items[0].interest_validation.status).toBe(
       AI_STATUS.pending,
     );
+  });
+
+  it("handles the latest real LinkedIn dump without filtering suggested posts", () => {
+    const parsedPosts = REAL_FEED_FIXTURE.posts
+      .map((post) => setupRealFeedPost(post.index))
+      .filter(Boolean);
+
+    expect(REAL_FEED_FIXTURE.feed.childListItems).toBe(13);
+    expect(REAL_FEED_FIXTURE.posts).toHaveLength(8);
+    expect(parsedPosts).toHaveLength(REAL_FEED_FIXTURE.posts.length);
+
+    expect(isSuggestedPost(parsedPosts[0])).toBe(true);
+    expect(analyzePostElement(parsedPosts[0])).toMatchObject({
+      status: "accepted",
+      item: {
+        author: "Peppe Silletti",
+      },
+    });
+    expect(isPromotedPost(parsedPosts[1])).toBe(true);
+    expect(isPromotedPost(parsedPosts[5])).toBe(true);
+    expect(extractAuthor(parsedPosts[0])).toBe("Peppe Silletti");
+    expect(extractAuthor(parsedPosts[4])).toBe("Maarten Dalmijn");
+    expect(extractAuthor(parsedPosts[7])).toBe("Victoria Charra");
+    expect(
+      extractRepostMetadata(parsedPosts[4], extractAuthor(parsedPosts[4])),
+    ).toEqual({
+      is_repost: false,
+      reposted_by: null,
+    });
   });
 });

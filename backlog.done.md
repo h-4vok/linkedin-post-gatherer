@@ -58,3 +58,16 @@ Agregar una forma de inspeccionar dentro del browser el `JSON` final que hoy se 
   - copiarlo parcial o completamente
 - Idealmente dejar preparado el camino para mostrar tambien el `JSON enriched` cuando exista y este listo, sin obligar a descargarlo primero.
 - Mantener la descarga tradicional como opcion separada; la vista previa no la reemplaza.
+
+## BL-013: Recuperar deteccion correcta de `reposted_by` en reposts del feed
+
+Estado: terminado.
+
+Revisar y corregir la deteccion de reposts en el extractor del feed, porque habia evidencia de posts compartidos/reposteados que terminaban normalizados como si fueran posts originales.
+
+### Resultado entregado
+- Se corrigio la deteccion de reposts para no depender solo de la frase literal `X reposted this`.
+- Se mejoro la resolucion de `author`, `reposted_by` e `is_repost` usando senales del header social y fallback explicito cuando el DOM no alcanza.
+- Se evitaron falsos positivos para interacciones sociales como `likes this`, `supports this`, `loves this` y `found this insightful`.
+- Se agregaron y ampliaron smoke tests para cubrir repost clasico, variantes mas cercanas al DOM actual y casos no-repost.
+- Se incorporo un fixture real adicional del feed extraido de LinkedIn para proteger el extractor frente a drift de markup.
