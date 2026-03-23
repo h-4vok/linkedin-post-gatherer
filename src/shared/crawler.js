@@ -69,7 +69,7 @@ export function getProgressState(
     totalCount,
     noProgressLimit = NO_PROGRESS_LIMIT,
     stalledWaitLimit = STALLED_WAIT_LIMIT,
-  },
+  }
 ) {
   if (currentState.runState === RUN_STATES.stopping) {
     return {

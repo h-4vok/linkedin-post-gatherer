@@ -1,15 +1,21 @@
 {
   "name": "linkedin-post-gatherer",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint": "eslint .",
     "build": "vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepush": "npm run format && npm run lint && npm test && npm run build"
   },
   "devDependencies": {
+    "eslint": "^9.22.0",
     "jsdom": "^26.0.0",
+    "prettier": "^3.5.3",
     "vite": "^6.2.0",
     "vitest": "^3.0.8"
   }

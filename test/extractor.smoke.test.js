@@ -21,7 +21,7 @@ import { AI_STATUS } from "../src/shared/constants.js";
 import { getSerializableState, mergeNewItems } from "../src/shared/state.js";
 
 const REAL_FEED_FIXTURE = JSON.parse(
-  readFileSync("test/fixtures/linkedin-feedcurrent-2026-03-23.json", "utf8"),
+  readFileSync("test/fixtures/linkedin-feedcurrent-2026-03-23.json", "utf8")
 );
 
 const FEED_FIXTURE = `
@@ -231,7 +231,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const posts = findPostElements(findFeedContainer(document));
 
     expect(extractAuthorProfileUrl(posts[0], "Gonzalo Corbijn")).toBe(
-      "https://www.linkedin.com/in/gonzalo-corbijn/",
+      "https://www.linkedin.com/in/gonzalo-corbijn/"
     );
     expect(extractAuthorProfileUrl(posts[2], "Ada Lovelace")).toBeNull();
   });
@@ -242,9 +242,7 @@ describe("LinkedIn feed smoke extraction", () => {
 
     expect(findPostOverflowButton(posts[0])).not.toBeNull();
     expect(findFloatingPostMenu(document)).not.toBeNull();
-    expect(findCopyLinkMenuItem(document)?.textContent).toContain(
-      "Copy link to post",
-    );
+    expect(findCopyLinkMenuItem(document)?.textContent).toContain("Copy link to post");
   });
 
   it("detects repost metadata without misclassifying social suggestions", () => {
@@ -273,9 +271,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const document = setupDocument();
     const posts = findPostElements(findFeedContainer(document));
 
-    expect(extractPostText(posts[0])).toBe(
-      "Full organic text with a hidden ending.",
-    );
+    expect(extractPostText(posts[0])).toBe("Full organic text with a hidden ending.");
     expect(extractPostText(posts[2])).toBeNull();
   });
 
@@ -310,61 +306,50 @@ describe("LinkedIn feed smoke extraction", () => {
       post_text: "Full organic text with a hidden ending.",
       posted_time: "4h",
     });
-    expect(
-      firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones"),
-    ).toMatchObject({
+    expect(firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones")).toMatchObject({
       author: "Liz Fong-Jones",
       is_repost: true,
       reposted_by: "Charity Majors",
     });
     expect(
-      firstPass.acceptedItems.find(
-        (item) => item.post_text === "Should be skipped as suggested.",
-      ),
+      firstPass.acceptedItems.find((item) => item.post_text === "Should be skipped as suggested.")
     ).toMatchObject({
       author: "Muhammad Haseeb",
       post_text: "Should be skipped as suggested.",
     });
-    expect(
-      firstPass.acceptedItems.find((item) => item.author === "Cruz Gamboa"),
-    ).toMatchObject({
+    expect(firstPass.acceptedItems.find((item) => item.author === "Cruz Gamboa")).toMatchObject({
       author: "Cruz Gamboa",
       is_repost: false,
       reposted_by: null,
     });
-    expect(
-      firstPass.acceptedItems.find((item) => item.author === "Maarten Dalmijn"),
-    ).toMatchObject({
-      is_repost: false,
-      reposted_by: null,
-    });
-    expect(
-      firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones"),
-    ).toMatchObject({
+    expect(firstPass.acceptedItems.find((item) => item.author === "Maarten Dalmijn")).toMatchObject(
+      {
+        is_repost: false,
+        reposted_by: null,
+      }
+    );
+    expect(firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones")).toMatchObject({
       is_repost: true,
       reposted_by: "Charity Majors",
     });
     expect(
       firstPass.acceptedItems.find(
         (item) =>
-          item.post_text ===
-          "Current repost social header should resolve sharer separately.",
-      ),
+          item.post_text === "Current repost social header should resolve sharer separately."
+      )
     ).toMatchObject({
       author: "Liz Fong-Jones",
       is_repost: true,
       reposted_by: "Rob Sandberg",
     });
-    expect(
-      firstPass.acceptedItems.find((item) => item.author === "Patty Fonacier"),
-    ).toMatchObject({
+    expect(firstPass.acceptedItems.find((item) => item.author === "Patty Fonacier")).toMatchObject({
       author: "Patty Fonacier",
       post_text: "Author should come from aria-label.",
     });
     expect(
       firstPass.acceptedItems.find(
-        (item) => item.post_text === "Author should come from paragraph marker.",
-      ),
+        (item) => item.post_text === "Author should come from paragraph marker."
+      )
     ).toMatchObject({
       author: "Muhammad Haseeb",
     });
@@ -390,9 +375,7 @@ describe("LinkedIn feed smoke extraction", () => {
       not_interested: 0,
       unknown: 0,
     });
-    expect(firstMerge.state.items[0].interest_validation.status).toBe(
-      AI_STATUS.pending,
-    );
+    expect(firstMerge.state.items[0].interest_validation.status).toBe(AI_STATUS.pending);
   });
 
   it("handles the latest real LinkedIn dump without filtering suggested posts", () => {
@@ -416,9 +399,7 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(parsedPosts[0])).toBe("Peppe Silletti");
     expect(extractAuthor(parsedPosts[4])).toBe("Maarten Dalmijn");
     expect(extractAuthor(parsedPosts[7])).toBe("Victoria Charra");
-    expect(
-      extractRepostMetadata(parsedPosts[4], extractAuthor(parsedPosts[4])),
-    ).toEqual({
+    expect(extractRepostMetadata(parsedPosts[4], extractAuthor(parsedPosts[4]))).toEqual({
       is_repost: false,
       reposted_by: null,
     });

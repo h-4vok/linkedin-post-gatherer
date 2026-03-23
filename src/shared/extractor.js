@@ -1,12 +1,10 @@
-const FEED_SELECTOR =
-  'div[componentkey="container-update-list_mainFeed-lazy-container"]';
+const FEED_SELECTOR = 'div[componentkey="container-update-list_mainFeed-lazy-container"]';
 const POST_SELECTOR = 'div[role="listitem"]';
 const PROMOTED_LABELS = ["Promoted", "Publicidad"];
 const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
 const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
 const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
-const OVERFLOW_BUTTON_SELECTOR =
-  'button[aria-label*="Open control menu for post"]';
+const OVERFLOW_BUTTON_SELECTOR = 'button[aria-label*="Open control menu for post"]';
 const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
 const MENU_ITEM_SELECTOR = '[role="menuitem"]';
 
@@ -112,10 +110,7 @@ function removeRelationshipMarker(text) {
   let hadMarker = false;
 
   for (const marker of RELATIONSHIP_MARKERS) {
-    const markerPattern = new RegExp(
-      `\\s*[•\\-·]?\\s*${escapeRegExp(marker)}(?:\\s|$)`,
-      "gi",
-    );
+    const markerPattern = new RegExp(`\\s*[•\\-·]?\\s*${escapeRegExp(marker)}(?:\\s|$)`, "gi");
 
     if (markerPattern.test(cleaned)) {
       hadMarker = true;
@@ -151,9 +146,7 @@ function extractAuthorFromAriaLabels(postElement) {
 }
 
 function extractAuthorFromProfileAnchors(postElement) {
-  const anchors = Array.from(
-    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
-  );
+  const anchors = Array.from(postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'));
 
   for (const anchor of anchors) {
     const author = cleanPersonLabel(anchor.textContent || "");
@@ -241,9 +234,7 @@ function collectIdentityCandidates(postElement) {
     pushCandidate(removeRelationshipMarker(text));
   }
 
-  const anchors = Array.from(
-    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
-  );
+  const anchors = Array.from(postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'));
 
   for (const anchor of anchors) {
     pushCandidate(anchor.textContent || "");
@@ -254,7 +245,7 @@ function collectIdentityCandidates(postElement) {
 
 export function extractAuthor(postElement, options = {}) {
   const excludedKeys = new Set(
-    (options.excludeNames || []).map((value) => normalizePersonKey(value)),
+    (options.excludeNames || []).map((value) => normalizePersonKey(value))
   );
 
   for (const candidate of collectIdentityCandidates(postElement)) {
@@ -281,9 +272,7 @@ function extractLeadingSocialSignal(postElement, author) {
   }
 
   const prefix = preview.slice(0, authorIndex).trim();
-  const repostMatch = prefix.match(
-    /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
-  );
+  const repostMatch = prefix.match(/^(.*?)\s+(reposted this|reposted|shared this|shared)$/i);
 
   if (repostMatch) {
     return {
@@ -293,7 +282,7 @@ function extractLeadingSocialSignal(postElement, author) {
   }
 
   const socialMatch = prefix.match(
-    /^(.*?)\s+(likes this|loves this|supports this|found this insightful)$/i,
+    /^(.*?)\s+(likes this|loves this|supports this|found this insightful)$/i
   );
 
   if (socialMatch) {
@@ -311,9 +300,7 @@ export function extractRepostMetadata(postElement, author = null) {
 
   for (const paragraph of paragraphs) {
     const text = normalizeWhitespace(paragraph.textContent || "");
-    const repostMatch = text.match(
-      /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
-    );
+    const repostMatch = text.match(/^(.*?)\s+(reposted this|reposted|shared this|shared)$/i);
 
     if (repostMatch) {
       return {
@@ -322,9 +309,7 @@ export function extractRepostMetadata(postElement, author = null) {
       };
     }
 
-    if (
-      /^(.*?)\s+(loves this|supports this|found this insightful)$/i.test(text)
-    ) {
+    if (/^(.*?)\s+(loves this|supports this|found this insightful)$/i.test(text)) {
       return {
         is_repost: false,
         reposted_by: null,
@@ -374,17 +359,13 @@ export function extractPostedTime(postElement) {
 }
 
 export function extractAuthorProfileUrl(postElement, author) {
-  const anchors = Array.from(
-    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
-  );
+  const anchors = Array.from(postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'));
   const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
 
   for (const anchor of anchors) {
     const href = anchor.getAttribute("href");
     const anchorText = normalizeWhitespace(
-      [anchor.textContent || "", anchor.getAttribute("aria-label") || ""].join(
-        " ",
-      ),
+      [anchor.textContent || "", anchor.getAttribute("aria-label") || ""].join(" ")
     ).toLowerCase();
 
     if (!href) {
@@ -432,16 +413,13 @@ export function findCopyLinkMenuItem(root = document) {
     Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR)).find((item) =>
       normalizeWhitespace(item.textContent || "")
         .toLowerCase()
-        .includes("copy link to post"),
+        .includes("copy link to post")
     ) || null
   );
 }
 
 export function buildFingerprint(postElement, author) {
-  const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
-    0,
-    240,
-  );
+  const visibleText = normalizeWhitespace(postElement.textContent || "").slice(0, 240);
 
   return `${author.toLowerCase()}::${visibleText.toLowerCase()}`;
 }
@@ -451,7 +429,7 @@ export function buildNormalizedItem(
   author,
   repostMetadata,
   now = new Date(),
-  options = {},
+  options = {}
 ) {
   return {
     link: options.link || null,
@@ -497,18 +475,16 @@ export function analyzePostElement(postElement, now = new Date()) {
 
 export function scanFeedPosts(
   feedContainer,
-  {
-    processedElements = new WeakMap(),
-    nowFactory = () => new Date(),
-  } = {},
+  { processedElements = new WeakMap(), nowFactory = () => new Date() } = {}
 ) {
   const acceptedItems = [];
   const skippedItems = [];
 
   for (const postElement of findPostElements(feedContainer)) {
-    const currentElementSignature = normalizeWhitespace(
-      postElement.textContent || "",
-    ).slice(0, 240);
+    const currentElementSignature = normalizeWhitespace(postElement.textContent || "").slice(
+      0,
+      240
+    );
 
     if (processedElements.get(postElement) === currentElementSignature) {
       continue;

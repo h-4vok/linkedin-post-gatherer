@@ -61,8 +61,8 @@ describe("crawler helpers", () => {
         {
           addedCount: 1,
           totalCount: 5,
-        },
-      ),
+        }
+      )
     ).toMatchObject({
       runState: RUN_STATES.completed,
       status: STATUS_TEXT.completed,
@@ -85,8 +85,8 @@ describe("crawler helpers", () => {
         {
           addedCount: 0,
           totalCount: 12,
-        },
-      ),
+        }
+      )
     ).toMatchObject({
       runState: RUN_STATES.running,
       status: STATUS_TEXT.waitingForMore,
@@ -116,8 +116,8 @@ describe("crawler helpers", () => {
         {
           addedCount: 0,
           totalCount: 12,
-        },
-      ),
+        }
+      )
     ).toMatchObject({
       runState: RUN_STATES.stopped,
       status: STATUS_TEXT.stalled,
@@ -139,8 +139,8 @@ describe("crawler helpers", () => {
         {
           addedCount: 0,
           totalCount: 10,
-        },
-      ),
+        }
+      )
     ).toMatchObject({
       runState: RUN_STATES.stopped,
       status: STATUS_TEXT.stopped,

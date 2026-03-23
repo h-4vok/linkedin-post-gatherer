@@ -21,8 +21,7 @@ export function toEnrichedExportItem(item) {
   return {
     ...pickExportFields(item),
     author_role: item?.author_role || null,
-    author_followers:
-      typeof item?.author_followers === "number" ? item.author_followers : null,
+    author_followers: typeof item?.author_followers === "number" ? item.author_followers : null,
     author_weight: item?.author_weight || "low",
   };
 }

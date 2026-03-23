@@ -8,6 +8,7 @@ Integrar una etapa de validacion posterior al primer filtro del crawler usando l
 Objetivo: decidir si un post ya recolectado realmente nos interesa para comentar bajo nuestro perfil.
 
 ### Resultado esperado
+
 - Cada post que pase el primer filtro debe recibir una decision adicional de interes basada en Gemini.
 - La decision debe quedar registrada junto al post para trazabilidad.
 - El pipeline debe permitir continuar aunque falle la llamada al servicio (fallback controlado).
@@ -19,6 +20,7 @@ Estado: terminado.
 Revisar y restaurar la extraccion del link canonico del post en el flujo normalizado del harvester.
 
 ### Resultado entregado
+
 - Se recupero la extraccion del permalink en el flujo normalizado.
 - El export final dejo de producir `link: null` de forma sistematica en la corrida validada.
 - Se endurecio la resolucion del menu flotante de LinkedIn y el manejo del clipboard.
@@ -32,6 +34,7 @@ Estado: terminado.
 Agregar en el popup del plugin una accion manual orientada a debugging que permita extraer el DOM relevante del feed de LinkedIn y mostrarlo inmediatamente al operador, para poder copiarlo y generar nuevos fixtures o revisar drift de selectores.
 
 ### Resultado esperado
+
 - Agregar un boton accesible desde el popup del plugin, no necesariamente desde el panel inyectado.
 - Al accionarlo:
   - si encuentra el feed, abrir una vista tipo popup/modal con el dump serializado del feed listo para copiar
@@ -51,6 +54,7 @@ Estado: terminado.
 Agregar una forma de inspeccionar dentro del browser el `JSON` final que hoy se descarga como archivo, para los casos en que el operador solo quiere revisarlo o copiar fragmentos sin bajar el archivo.
 
 ### Resultado esperado
+
 - Exponer desde el popup una accion para abrir una vista previa del `JSON` resultante generado por la extension.
 - La vista puede ser un popup/modal simple y copiable.
 - Debe servir al menos para:
@@ -66,6 +70,7 @@ Estado: terminado.
 Revisar y corregir la deteccion de reposts en el extractor del feed, porque habia evidencia de posts compartidos/reposteados que terminaban normalizados como si fueran posts originales.
 
 ### Resultado entregado
+
 - Se corrigio la deteccion de reposts para no depender solo de la frase literal `X reposted this`.
 - Se mejoro la resolucion de `author`, `reposted_by` e `is_repost` usando senales del header social y fallback explicito cuando el DOM no alcanza.
 - Se evitaron falsos positivos para interacciones sociales como `likes this`, `supports this`, `loves this` y `found this insightful`.

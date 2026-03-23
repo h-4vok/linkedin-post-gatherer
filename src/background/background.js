@@ -14,11 +14,7 @@ import {
   buildAuthorSignalPatch,
   normalizeAuthorName,
 } from "../shared/author-weight.js";
-import {
-  toEnrichedExportItem,
-  toRawExportItem,
-  serializeExportItems,
-} from "../shared/export.js";
+import { toEnrichedExportItem, toRawExportItem, serializeExportItems } from "../shared/export.js";
 import {
   buildValidationResult,
   getAiConfig,
@@ -30,6 +26,7 @@ import {
 } from "./gemini.js";
 import {
   applyCrawlerProgress,
+  appendIgnoredSamples,
   cancelEnrichment,
   clearTabState,
   completeEnrichment,
@@ -73,10 +70,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
 
-  const tabId = Number.parseInt(
-    alarm.name.slice(AI_RETRY_ALARM_PREFIX.length),
-    10,
-  );
+  const tabId = Number.parseInt(alarm.name.slice(AI_RETRY_ALARM_PREFIX.length), 10);
 
   if (!Number.isInteger(tabId)) {
     return;
@@ -102,10 +96,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 async function handleMessage(message, sender) {
   const tabId = resolveTabId(message, sender);
-  const tablessMessageTypes = new Set([
-    MESSAGE_TYPES.getAiConfig,
-    MESSAGE_TYPES.setAiConfig,
-  ]);
+  const tablessMessageTypes = new Set([MESSAGE_TYPES.getAiConfig, MESSAGE_TYPES.setAiConfig]);
 
   if (
     tabId == null &&
@@ -168,10 +159,7 @@ async function handleMessage(message, sender) {
         return { ok: false, error: "LinkedIn feed is unavailable on this tab." };
       }
 
-      if (
-        preStart.runState === RUN_STATES.running ||
-        preStart.runState === RUN_STATES.stopping
-      ) {
+      if (preStart.runState === RUN_STATES.running || preStart.runState === RUN_STATES.stopping) {
         return { ok: true, state: preStart };
       }
 
@@ -199,10 +187,7 @@ async function handleMessage(message, sender) {
     case MESSAGE_TYPES.stopRequest: {
       const preStop = getSerializableState(tabId);
 
-      if (
-        preStop.runState !== RUN_STATES.running &&
-        preStop.runState !== RUN_STATES.stopping
-      ) {
+      if (preStop.runState !== RUN_STATES.running && preStop.runState !== RUN_STATES.stopping) {
         return { ok: true, state: preStop };
       }
 
@@ -219,6 +204,9 @@ async function handleMessage(message, sender) {
       }
 
       const mergeResult = mergeNewItems(tabId, message.items);
+      if (Array.isArray(message.skippedSamples) && message.skippedSamples.length) {
+        await appendIgnoredSamples(tabId, message.skippedSamples);
+      }
       const state = await persistState(tabId);
       logServiceWorkerEvent("items-merged", {
         tabId,
@@ -252,7 +240,7 @@ async function handleMessage(message, sender) {
       if (message.phase === "stopped") {
         const state = await finalizeStopCrawler(
           tabId,
-          message.reason === "stalled" ? "stalled" : "user",
+          message.reason === "stalled" ? "stalled" : "user"
         );
         logServiceWorkerEvent("crawler-stopped", {
           tabId,
@@ -329,10 +317,7 @@ async function handleMessage(message, sender) {
 
       const state = getSerializableState(tabId);
 
-      if (
-        state.runState === RUN_STATES.running ||
-        state.runState === RUN_STATES.stopping
-      ) {
+      if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
         return {
           ok: false,
           error: "Stop the crawler before running enriched export.",
@@ -413,6 +398,19 @@ async function handleMessage(message, sender) {
         count: items.length,
         filename: buildExportFilename(mode),
         json: serializeExportItems(items),
+      };
+    }
+
+    case MESSAGE_TYPES.debugIgnoredSamplesRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for ignored samples" };
+      }
+
+      const state = getSerializableState(tabId);
+      return {
+        ok: true,
+        count: state.ignoredSamples?.length || 0,
+        json: JSON.stringify(state.ignoredSamples || [], null, 2),
       };
     }
 
@@ -497,6 +495,21 @@ async function broadcastCountUpdated(tabId, state) {
   }
 }
 
+async function broadcastAiActivity(tabId, text) {
+  if (!text) {
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: MESSAGE_TYPES.aiActivity,
+      text,
+    });
+  } catch {
+    // Content scripts are optional for non-LinkedIn tabs.
+  }
+}
+
 function buildExportFilename(mode, date = new Date()) {
   const suffix = mode === "enriched" ? "_enriched" : "";
   return `linkedin_dump_${date.toISOString().slice(0, 10)}${suffix}.json`;
@@ -515,11 +528,7 @@ function resolveTabId(message, sender) {
 }
 
 async function clearLegacyLocalState() {
-  await chrome.storage.local.remove([
-    STORAGE_KEYS.items,
-    STORAGE_KEYS.count,
-    STORAGE_KEYS.status,
-  ]);
+  await chrome.storage.local.remove([STORAGE_KEYS.items, STORAGE_KEYS.count, STORAGE_KEYS.status]);
 }
 
 async function sendCrawlerCommand(tabId, action, payload = {}) {
@@ -577,9 +586,7 @@ async function runValidationWorker(tabId) {
 
     if (configError) {
       const queueState = await setAiQueueState(tabId, {
-        phase: config.enabled
-          ? AI_QUEUE_PHASES.configError
-          : AI_QUEUE_PHASES.disabled,
+        phase: config.enabled ? AI_QUEUE_PHASES.configError : AI_QUEUE_PHASES.disabled,
         retryAfterUntil: null,
         lastError: configError,
       });
@@ -607,13 +614,17 @@ async function runValidationWorker(tabId) {
       apiKeyPresent: Boolean(config.apiKey),
       apiKeyLength: config.apiKey?.length || 0,
     });
+    await broadcastAiActivity(
+      tabId,
+      `AI validation running for ${pendingItems.length} pending posts.`
+    );
 
     try {
       const result = await validatePostInterest(item, config);
       const updatedState = await updateInterestValidation(
         tabId,
         item.fingerprint,
-        buildValidationResult(result.status, attempts, null),
+        buildValidationResult(result.status, attempts, null)
       );
       await setAiQueueState(tabId, {
         phase: AI_QUEUE_PHASES.processing,
@@ -628,6 +639,12 @@ async function runValidationWorker(tabId) {
         attempts,
         pendingCount: Math.max(0, pendingItems.length - 1),
       });
+      await broadcastAiActivity(
+        tabId,
+        result.status === AI_STATUS.interested
+          ? "AI marked 1 post as interested."
+          : "AI marked 1 post as not_interested."
+      );
       await broadcastCountUpdated(tabId, updatedState);
       logServiceWorkerEvent("ai-validation-idle-delay", {
         tabId,
@@ -642,7 +659,7 @@ async function runValidationWorker(tabId) {
         const updatedState = await updateInterestValidation(
           tabId,
           item.fingerprint,
-          buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind),
+          buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind)
         );
         const queueState = await setAiQueueState(tabId, {
           phase: AI_QUEUE_PHASES.idle,
@@ -656,6 +673,7 @@ async function runValidationWorker(tabId) {
           attempts,
           message: normalizedError.message,
         });
+        await broadcastAiActivity(tabId, "AI left 1 post as unknown after retries.");
         await broadcastCountUpdated(tabId, queueState || updatedState);
         continue;
       }
@@ -680,6 +698,10 @@ async function runValidationWorker(tabId) {
         retryUntil,
         message: normalizedError.message,
       });
+      await broadcastAiActivity(
+        tabId,
+        `AI validation backing off after rate limit. Pending: ${pendingItems.length}.`
+      );
       await broadcastCountUpdated(tabId, queueState);
       await scheduleValidationRetryAlarm(tabId, retryDelayMs);
       return;
@@ -721,10 +743,7 @@ async function runEnrichment(tabId) {
 
     for (const bucket of authorBuckets) {
       if (run.cancelled) {
-        const cancelledState = await cancelEnrichment(
-          tabId,
-          "Enrichment cancelled.",
-        );
+        const cancelledState = await cancelEnrichment(tabId, "Enrichment cancelled.");
         await broadcastCountUpdated(tabId, cancelledState);
         return;
       }
@@ -765,14 +784,11 @@ async function runEnrichment(tabId) {
     const completedState = await completeEnrichment(
       tabId,
       enrichedItems,
-      "Enriched export ready for download.",
+      "Enriched export ready for download."
     );
     await broadcastCountUpdated(tabId, completedState);
   } catch (error) {
-    const failedState = await failEnrichment(
-      tabId,
-      error.message || "Enrichment failed.",
-    );
+    const failedState = await failEnrichment(tabId, error.message || "Enrichment failed.");
     await broadcastCountUpdated(tabId, failedState);
     logServiceWorkerEvent("enrichment-failed", {
       tabId,

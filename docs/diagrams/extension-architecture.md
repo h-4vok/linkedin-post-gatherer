@@ -18,10 +18,12 @@ flowchart LR
     BG -->|start / stop / status| CS
     CS -->|filtered post data| BG
     UI -->|raw or enriched export| BG
+    UI -->|ignored debug preview| BG
     BG -->|profile extract request| CS
     BG -->|serial AI validation| GS
     BG --> ST
     BG -->|progress count| UI
+    BG -->|AI activity| CS
     BG --> EX
 ```
 

@@ -16,25 +16,19 @@ describe("floating panel helpers", () => {
       clampPanelPosition(
         { top: -50, right: 5000 },
         { width: 1200, height: 800 },
-        { minimized: false },
-      ),
+        { minimized: false }
+      )
     ).toEqual({ top: 12, right: 868 });
   });
 
   it("clamps minimized position using minimized bounds", () => {
     expect(
-      clampPanelPosition(
-        { top: 999, right: 999 },
-        { width: 600, height: 400 },
-        { minimized: true },
-      ),
+      clampPanelPosition({ top: 999, right: 999 }, { width: 600, height: 400 }, { minimized: true })
     ).toEqual({ top: 336, right: 424 });
   });
 
   it("builds inline styles from a clamped position", () => {
-    expect(
-      buildPanelStyles({ top: 120, right: 48 }, { minimized: false }),
-    ).toEqual({
+    expect(buildPanelStyles({ top: 120, right: 48 }, { minimized: false })).toEqual({
       top: "120px",
       right: "48px",
       width: "320px",

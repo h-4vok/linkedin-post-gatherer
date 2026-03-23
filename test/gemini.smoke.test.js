@@ -30,9 +30,7 @@ describe("gemini validation helpers", () => {
       systemInstruction: "decide relevance",
     });
     expect(getAiConfigError(config)).toBeNull();
-    expect(getAiConfigError({ ...config, apiKey: "" })).toBe(
-      "Gemini API key is missing.",
-    );
+    expect(getAiConfigError({ ...config, apiKey: "" })).toBe("Gemini API key is missing.");
   });
 
   it("falls back to the default system instruction when none is provided", () => {
@@ -75,7 +73,7 @@ describe("gemini validation helpers", () => {
         model: "gemini-2.5-flash",
         systemInstruction: "Return only interested or not_interested.",
       },
-      { fetchImpl },
+      { fetchImpl }
     );
 
     expect(result.status).toBe(AI_STATUS.interested);
@@ -111,29 +109,21 @@ describe("gemini validation helpers", () => {
           model: "gemini-2.5-flash",
           systemInstruction: "Return only interested or not_interested.",
         },
-        { fetchImpl },
-      ),
+        { fetchImpl }
+      )
     ).rejects.toMatchObject({
       kind: "parse-error",
     });
   });
 
   it("calculates conservative retry delays for free-tier quota handling", () => {
-    expect(
-      shouldRetryGeminiError({ kind: "rate-limited" }, AI_RATE_LIMIT.maxAttempts),
-    ).toBe(false);
-    expect(getRetryDelayMs({ kind: "rate-limited", retryAfterMs: 8000 }, 2)).toBe(
-      16000,
-    );
-    expect(getRetryDelayMs({ kind: "quota-exhausted" }, 1)).toBe(
-      AI_RATE_LIMIT.quotaCooldownMs,
-    );
-    expect(buildValidationResult(AI_STATUS.unknown, 3, "rate-limited")).toMatchObject(
-      {
-        status: AI_STATUS.unknown,
-        attempts: 3,
-        error: "rate-limited",
-      },
-    );
+    expect(shouldRetryGeminiError({ kind: "rate-limited" }, AI_RATE_LIMIT.maxAttempts)).toBe(false);
+    expect(getRetryDelayMs({ kind: "rate-limited", retryAfterMs: 8000 }, 2)).toBe(16000);
+    expect(getRetryDelayMs({ kind: "quota-exhausted" }, 1)).toBe(AI_RATE_LIMIT.quotaCooldownMs);
+    expect(buildValidationResult(AI_STATUS.unknown, 3, "rate-limited")).toMatchObject({
+      status: AI_STATUS.unknown,
+      attempts: 3,
+      error: "rate-limited",
+    });
   });
 });

@@ -44,6 +44,7 @@ function createEmptyState() {
   return {
     itemsByFingerprint: new Map(),
     enrichedItems: [],
+    ignoredSamples: [],
     status: STATUS_TEXT.idle,
     runState: RUN_STATES.idle,
     targetCount: TARGET_COUNT_DEFAULT,
@@ -83,6 +84,7 @@ export function getSerializableState(tabId) {
 
   return {
     items,
+    ignoredSamples: tabState.ignoredSamples.map((item) => ({ ...item })),
     count: tabState.itemsByFingerprint.size,
     repostCount: items.filter((item) => item.is_repost).length,
     status: tabState.status,
@@ -100,7 +102,7 @@ export function getSerializableState(tabId) {
 
 export function getExportItems(tabId) {
   return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).map(
-    ({ fingerprint, ...item }) => item,
+    ({ fingerprint, ...item }) => item
   );
 }
 
@@ -172,7 +174,7 @@ export function finalizeStopCrawler(tabId, reason = "user") {
 
 export function applyCrawlerProgress(
   tabId,
-  { addedCount = 0, noProgressLimit, stalledWaitLimit } = {},
+  { addedCount = 0, noProgressLimit, stalledWaitLimit } = {}
 ) {
   const tabState = getOrCreateTabState(tabId);
   const totalCount = tabState.itemsByFingerprint.size;
@@ -214,8 +216,7 @@ export function mergeNewItems(tabId, items) {
 
     tabState.itemsByFingerprint.set(item.fingerprint, {
       ...item,
-      interest_validation:
-        item.interest_validation || createPendingInterestValidation(),
+      interest_validation: item.interest_validation || createPendingInterestValidation(),
     });
     addedCount += 1;
     addedFingerprints.push(item.fingerprint);
@@ -232,9 +233,27 @@ export function mergeNewItems(tabId, items) {
   };
 }
 
+export function appendIgnoredSamples(tabId, samples) {
+  const tabState = getOrCreateTabState(tabId);
+
+  if (!Array.isArray(samples) || samples.length === 0) {
+    return persistState(tabId).then(() => getSerializableState(tabId));
+  }
+
+  const normalizedSamples = samples
+    .filter(Boolean)
+    .map((sample) => ({ ...sample }))
+    .slice(-50)
+    .reverse();
+
+  tabState.ignoredSamples = [...normalizedSamples, ...tabState.ignoredSamples].slice(0, 50);
+
+  return persistState(tabId).then(() => getSerializableState(tabId));
+}
+
 export function getPendingValidationItems(tabId) {
   return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).filter(
-    (item) => item?.interest_validation?.status === AI_STATUS.pending,
+    (item) => item?.interest_validation?.status === AI_STATUS.pending
   );
 }
 
@@ -269,7 +288,7 @@ export function setAiQueueState(tabId, queuePatch) {
 
 export function startEnrichment(
   tabId,
-  { totalPosts = 0, totalAuthors = 0, lastMessage = null } = {},
+  { totalPosts = 0, totalAuthors = 0, lastMessage = null } = {}
 ) {
   const tabState = getOrCreateTabState(tabId);
   tabState.enrichedItems = [];
@@ -371,13 +390,16 @@ export async function hydrateStateFromStorage(tabId) {
     tabState.itemsByFingerprint.set(fingerprint, {
       ...item,
       fingerprint,
-      interest_validation:
-        item?.interest_validation || createPendingInterestValidation(),
+      interest_validation: item?.interest_validation || createPendingInterestValidation(),
     });
   }
 
   tabState.enrichedItems = Array.isArray(storedState?.enrichedItems)
     ? storedState.enrichedItems.map((item) => ({ ...item }))
+    : [];
+
+  tabState.ignoredSamples = Array.isArray(storedState?.ignoredSamples)
+    ? storedState.ignoredSamples.map((item) => ({ ...item }))
     : [];
 
   tabState.status = storedState?.status || STATUS_TEXT.idle;
@@ -452,6 +474,6 @@ function getAiCounts(items) {
       interested: 0,
       not_interested: 0,
       unknown: 0,
-    },
+    }
   );
 }
