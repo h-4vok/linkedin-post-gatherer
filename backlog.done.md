@@ -27,6 +27,54 @@ Revisar y restaurar la extraccion del link canonico del post en el flujo normali
 - Se elimino el patron alternado de exito/fallo causado por el cierre del menu via toggle del mismo overflow button.
 - Se agrego y actualizo cobertura de tests para proteger el comportamiento del extractor.
 
+
+## BL-005: Normalizar formatter/linter en package.json y rules of engagement
+
+Estado: terminado.
+
+Resolver la desalineacion entre documentacion y tooling para que el repo tenga scripts operativos de lint/format y una merge gate coherente.
+
+### Resultado entregado
+
+- Se agregaron `lint`, `format` y `format:write` a `package.json`.
+- Se dejo documentado el gate de `pre-push` con `npm run prepush`.
+- Se alinearon `README.md`, `REPO_WORK_RULES.md`, `DELIVERY_CHECKLIST.md` y la configuracion de tooling asociada.
+
+## BL-006: Export de posts ignorados para debugging del extractor
+
+Estado: terminado.
+
+Agregar una capacidad de export o dump de los posts que el harvester detecta pero termina ignorando, para poder revisar despues los casos descartados y depurar mejor cambios de DOM o heuristicas demasiado agresivas.
+
+### Resultado entregado
+
+- Se persistio temporalmente una muestra util de posts ignorados junto con su razon de descarte.
+- Se agrego un preview en el popup para inspeccionarlos sin descargar el archivo normal.
+- Se incluyo suficiente contexto para diagnostico, orientado a debugging y separado del export raw/enriched.
+
+## BL-008: Conservar mas historial en el activity log
+
+Estado: terminado.
+
+Revisar el comportamiento actual del activity log porque hoy se limpia o rota demasiado rapido, y despues de aproximadamente `4` items deja de mostrar historial util para seguimiento de la corrida.
+
+### Resultado entregado
+
+- Se aumento la retencion del activity log a `500` eventos maximos.
+- Se agrego una accion de copia simple junto al titulo de `Activity`.
+- Se mantuvo scroll interno para conservar una secuencia util de eventos sin perder contexto por rotacion temprana.
+
+## BL-009: Mostrar actividad de AI validation en el activity log
+
+Estado: terminado.
+
+Agregar visibilidad en el activity log cuando la validacion con AI esta habilitada y el sistema esta usando Gemini para filtrar o clasificar posts.
+
+### Resultado entregado
+
+- Se registraron eventos relevantes del flujo de AI validation en el activity log del panel.
+- Se cubrieron inicio de procesamiento, decisions, backoff por rate limit, fallback a `unknown` y fin de corrida.
+- Se mantuvieron los logs tecnicos del service worker como respaldo, pero el panel paso a ser la fuente humana principal de trazabilidad.
 ## BL-010: Captura manual del DOM del feed desde el popup para regenerar fixtures de debugging
 
 Estado: terminado.
@@ -76,3 +124,5 @@ Revisar y corregir la deteccion de reposts en el extractor del feed, porque habi
 - Se evitaron falsos positivos para interacciones sociales como `likes this`, `supports this`, `loves this` y `found this insightful`.
 - Se agregaron y ampliaron smoke tests para cubrir repost clasico, variantes mas cercanas al DOM actual y casos no-repost.
 - Se incorporo un fixture real adicional del feed extraido de LinkedIn para proteger el extractor frente a drift de markup.
+
+
