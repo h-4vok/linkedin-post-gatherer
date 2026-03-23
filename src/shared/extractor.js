@@ -343,10 +343,6 @@ export function analyzePostElement(postElement, now = new Date()) {
     return { status: "skipped", reason: "promoted" };
   }
 
-  if (isSuggestedPost(postElement)) {
-    return { status: "skipped", reason: "suggested" };
-  }
-
   const author = extractAuthor(postElement);
 
   if (!author) {

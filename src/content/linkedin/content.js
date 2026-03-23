@@ -1100,25 +1100,37 @@
       return null;
     }
 
+    const preExistingMenu = findFloatingPostMenu();
+
+    if (preExistingMenu) {
+      logPage("permalink-closing-stale-menu");
+      dismissFloatingMenu();
+      await waitForElementToDisappear(findFloatingPostMenu, 1000);
+    }
+
     logPage("permalink-menu-opening");
     overflowButton.click();
 
-    const menuElement = await waitForElement(findFloatingPostMenu, 1200);
+    const menuResolution = await waitForCopyLinkMenuItem({
+      previousMenu: preExistingMenu,
+      timeoutMs: 2500,
+      pollMs: 100,
+    });
+    const menuElement = menuResolution?.menuElement || null;
+    const copyLinkItem = menuResolution?.copyLinkItem || null;
 
     if (!menuElement) {
       logPage("permalink-menu-timeout");
       return null;
     }
 
-    logPage("permalink-menu-found");
-    const copyLinkItem = findCopyLinkMenuItem(menuElement);
-
     if (!copyLinkItem) {
-      logPage("permalink-copy-link-item-missing");
-      closeFloatingMenu(overflowButton);
+      logPage("permalink-copy-link-item-timeout");
+      await closeFloatingMenu();
       return null;
     }
 
+    logPage("permalink-menu-found");
     const clipboardBeforeClick = normalizeCapturedPermalink(
       await readClipboardPermalink(0),
     );
@@ -1131,7 +1143,7 @@
       timeoutMs: 2200,
       pollMs: 100,
     });
-    closeFloatingMenu(overflowButton);
+    await closeFloatingMenu();
 
     if (clipboardUrl) {
       if (seenLinks.has(clipboardUrl)) {
@@ -1170,8 +1182,29 @@
     return null;
   }
 
-  function closeFloatingMenu(overflowButton) {
-    overflowButton?.click();
+  async function closeFloatingMenu() {
+    if (!findFloatingPostMenu()) {
+      return;
+    }
+
+    dismissFloatingMenu();
+    await waitForElementToDisappear(findFloatingPostMenu, 1000);
+  }
+
+  function dismissFloatingMenu() {
+    try {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+        }),
+      );
+    } catch {
+      document.body?.click();
+    }
   }
 
   function normalizeCapturedPermalink(value) {
@@ -1241,6 +1274,62 @@
     return null;
   }
 
+  async function waitForElementToDisappear(getElement, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (!getElement()) {
+        return true;
+      }
+
+      await sleep(50);
+    }
+
+    return !getElement();
+  }
+
+  async function waitForCopyLinkMenuItem(options = {}) {
+    const previousMenu = options.previousMenu || null;
+    const timeoutMs = Math.max(300, options.timeoutMs || 2000);
+    const pollMs = Math.max(50, options.pollMs || 100);
+    const deadline = Date.now() + timeoutMs;
+    let lastMenuElement = null;
+
+    while (Date.now() < deadline) {
+      const menuElement = findFloatingPostMenu();
+
+      if (menuElement) {
+        lastMenuElement = menuElement;
+
+        const copyLinkItem = findCopyLinkMenuItem(menuElement);
+        const menuChanged = menuElement !== previousMenu;
+
+        if (copyLinkItem && (menuChanged || !previousMenu)) {
+          return {
+            menuElement,
+            copyLinkItem,
+          };
+        }
+
+        if (copyLinkItem) {
+          return {
+            menuElement,
+            copyLinkItem,
+          };
+        }
+      }
+
+      await sleep(pollMs);
+    }
+
+    return {
+      menuElement: lastMenuElement,
+      copyLinkItem: lastMenuElement
+        ? findCopyLinkMenuItem(lastMenuElement)
+        : null,
+    };
+  }
+
   function extractProfileSignals() {
     const roleSelectors = [
       ".text-body-medium.break-words",
@@ -1295,11 +1384,6 @@
 
       if (isPromotedPost(postElement)) {
         skippedItems.push("promoted");
-        continue;
-      }
-
-      if (isSuggestedPost(postElement)) {
-        skippedItems.push("suggested");
         continue;
       }
 

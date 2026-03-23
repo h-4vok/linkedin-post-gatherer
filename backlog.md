@@ -34,19 +34,6 @@ Caso detectado:
   - crawler interrumpido por el usuario
   - crawler detenido por fragilidad o estancamiento
 
-## BL-004: Recuperar extraccion del link/permalink del post
-
-Revisar y restaurar la extraccion del link canonico del post en el flujo normalizado del harvester.
-
-Caso detectado:
-- El campo `link` hoy queda en `null` en el flujo actual, por lo que la extraccion del permalink no esta implementada o se perdio en algun cambio previo.
-
-### Resultado esperado
-- Identificar el selector o anchor correcto del permalink del post en LinkedIn.
-- Extraer y persistir el link canonico en el campo `link` del item normalizado.
-- Verificar que el export raw y enriched conserven el permalink correctamente.
-- Agregar cobertura de tests para evitar que vuelva a quedar en `null` sin detectar la regresion.
-
 ## BL-005: Normalizar formatter/linter en package.json y rules of engagement
 
 Resolver la desalineacion actual entre documentacion y tooling: el repo exige `npm run lint`, `npm run format` y `npm run format:write` en README, checklist y repo rules, pero esos scripts no existen hoy en `package.json`.
@@ -186,3 +173,20 @@ Contexto:
 - Reducir el tamaño y complejidad ciclomática del entrypoint, dejando `content.js` como composicion/orquestacion liviana.
 - Mantener el comportamiento actual sin regresiones funcionales.
 - Agregar o ajustar tests donde haga falta para cubrir la nueva modularizacion y proteger el refactor.
+
+## BL-013: Recuperar deteccion correcta de `reposted_by` en reposts del feed
+
+Revisar y corregir la deteccion de reposts en el extractor del feed, porque hoy hay evidencia de posts compartidos/reposteados que terminan normalizados como si fueran posts originales.
+
+Caso detectado:
+- Algunos posts que parecen ser reposts terminan con `is_repost: false` y `reposted_by: null`.
+- En esos casos puede terminar persistiendose un permalink valido pero de una superficie distinta del post compartido, enmascarando el problema real de clasificacion.
+
+### Resultado esperado
+- Detectar correctamente cuando un item del feed es un repost/share y no un post original.
+- Poblar `reposted_by` con el nombre correcto de quien compartio el post cuando LinkedIn lo exponga.
+- Mantener `is_repost` alineado con `reposted_by` y con la semantica real del item en el feed.
+- Agregar fixtures/tests que cubran al menos:
+  - repost clasico con texto tipo `X reposted this`
+  - variantes actuales del markup de LinkedIn para shares/reposts
+  - casos sociales tipo `supports this` o `loves this` que no deben confundirse con repost
