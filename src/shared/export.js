@@ -26,3 +26,7 @@ export function toEnrichedExportItem(item) {
     author_weight: item?.author_weight || "low",
   };
 }
+
+export function serializeExportItems(items) {
+  return JSON.stringify(items, null, 2);
+}

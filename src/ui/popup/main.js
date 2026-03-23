@@ -9,11 +9,21 @@ const aiSystemInstructionInput = document.querySelector(
 );
 const saveAiConfigButton = document.querySelector("#save-ai-config");
 const resetDebugButton = document.querySelector("#reset-debug-data");
+const captureFeedDumpButton = document.querySelector("#capture-feed-dump");
+const previewRawButton = document.querySelector("#preview-json-raw");
+const previewEnrichedButton = document.querySelector("#preview-json-enriched");
 const popupFeedback = document.querySelector("#popup-feedback");
 const tabDebugStatus = document.querySelector("#tab-debug-status");
+const previewDialog = document.querySelector("#preview-dialog");
+const previewKind = document.querySelector("#preview-kind");
+const previewTitle = document.querySelector("#preview-title");
+const previewMeta = document.querySelector("#preview-meta");
+const previewOutput = document.querySelector("#preview-output");
+const previewCopyButton = document.querySelector("#preview-copy");
 
 let activeTabId = null;
 let activeTabUrl = "";
+let activeState = null;
 
 void hydratePopup();
 
@@ -73,6 +83,26 @@ resetDebugButton?.addEventListener("click", async () => {
   }
 });
 
+captureFeedDumpButton?.addEventListener("click", async () => {
+  await openFeedDumpPreview();
+});
+
+previewRawButton?.addEventListener("click", async () => {
+  await openExportPreview("raw");
+});
+
+previewEnrichedButton?.addEventListener("click", async () => {
+  await openExportPreview("enriched");
+});
+
+previewCopyButton?.addEventListener("click", async () => {
+  await copyPreviewText();
+});
+
+previewDialog?.addEventListener("close", () => {
+  previewOutput.value = "";
+});
+
 async function hydratePopup() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   activeTabId = tab?.id ?? null;
@@ -82,7 +112,9 @@ async function hydratePopup() {
     type: MESSAGE_TYPES.getAiConfig,
   });
   renderAiConfig(aiConfigResponse?.config || AI_DEFAULT_CONFIG);
+  await refreshActiveState();
   renderResetStatus();
+  renderDebugToolState();
 }
 
 function renderAiConfig(config) {
@@ -110,6 +142,153 @@ function renderResetStatus() {
   tabDebugStatus.textContent =
     "Reset clears captured posts, enriched export state and in-memory scan tracking for this LinkedIn tab.";
   resetDebugButton.disabled = false;
+}
+
+async function refreshActiveState() {
+  if (activeTabId == null) {
+    activeState = null;
+    return;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: MESSAGE_TYPES.getState,
+    tabId: activeTabId,
+  });
+
+  activeState = response?.state || null;
+}
+
+function renderDebugToolState() {
+  const isLinkedIn = activeTabId != null && isLinkedInTab(activeTabUrl);
+  const canPreviewRaw = Boolean(activeState);
+  const canPreviewEnriched =
+    activeState?.enrichment?.status === "completed" &&
+    activeState?.enrichment?.readyForDownload;
+
+  if (captureFeedDumpButton) {
+    captureFeedDumpButton.disabled = !isLinkedIn;
+  }
+
+  if (previewRawButton) {
+    previewRawButton.disabled = !canPreviewRaw;
+  }
+
+  if (previewEnrichedButton) {
+    previewEnrichedButton.disabled = !canPreviewEnriched;
+  }
+}
+
+async function openFeedDumpPreview() {
+  if (activeTabId == null || !isLinkedInTab(activeTabUrl)) {
+    popupFeedback.textContent = "Open a LinkedIn feed tab before capturing a dump.";
+    return;
+  }
+
+  captureFeedDumpButton.disabled = true;
+  popupFeedback.textContent = "Capturing feed DOM dump...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.debugFeedDumpRequest,
+      tabId: activeTabId,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to capture feed dump");
+    }
+
+    const json = JSON.stringify(response.dump, null, 2);
+    openPreviewModal({
+      kind: "DOM dump",
+      title: "LinkedIn feed dump",
+      meta: response.dump?.error
+        ? "Feed not found."
+        : `Captured ${response.dump?.posts?.length || 0} post samples.`,
+      text: json,
+    });
+    popupFeedback.textContent = "Feed dump captured.";
+  } catch (error) {
+    popupFeedback.textContent = error.message;
+  } finally {
+    renderDebugToolState();
+  }
+}
+
+async function openExportPreview(mode) {
+  if (activeTabId == null) {
+    popupFeedback.textContent = "Open a tab with collected data before previewing JSON.";
+    return;
+  }
+
+  popupFeedback.textContent =
+    mode === "enriched"
+      ? "Preparing enriched JSON preview..."
+      : "Preparing raw JSON preview...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.exportPreviewRequest,
+      tabId: activeTabId,
+      mode,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to build preview");
+    }
+
+    openPreviewModal({
+      kind: response.mode === "enriched" ? "Enriched JSON" : "Raw JSON",
+      title:
+        response.mode === "enriched"
+          ? "Export preview - enriched"
+          : "Export preview - raw",
+      meta: `${response.count || 0} items ready for preview.`,
+      text: response.json,
+    });
+    popupFeedback.textContent = "JSON preview ready.";
+  } catch (error) {
+    popupFeedback.textContent = error.message;
+  } finally {
+    renderDebugToolState();
+  }
+}
+
+function openPreviewModal({ kind, title, meta, text }) {
+  previewKind.textContent = kind;
+  previewTitle.textContent = title;
+  previewMeta.textContent = meta || "";
+  previewOutput.value = text || "";
+
+  if (previewDialog?.open) {
+    previewDialog.close();
+  }
+
+  if (typeof previewDialog?.showModal === "function") {
+    previewDialog.showModal();
+  } else {
+    previewDialog.setAttribute("open", "");
+  }
+
+  previewOutput.focus();
+  previewOutput.select();
+}
+
+async function copyPreviewText() {
+  const text = previewOutput.value || "";
+
+  if (!text) {
+    popupFeedback.textContent = "Nothing to copy.";
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    popupFeedback.textContent = "Preview copied to clipboard.";
+  } catch {
+    previewOutput.focus();
+    previewOutput.select();
+    popupFeedback.textContent = "Copy failed. Use manual copy from the preview.";
+  }
 }
 
 function isLinkedInTab(url) {
