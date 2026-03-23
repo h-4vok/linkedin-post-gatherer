@@ -160,6 +160,11 @@ h1 {
   color: #111827;
 }
 
+.button-stack {
+  display: grid;
+  gap: 8px;
+}
+
 .primary-button:hover,
 .secondary-button:hover {
   filter: brightness(0.95);
@@ -169,4 +174,65 @@ button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   filter: none;
+}
+
+.preview-dialog {
+  width: min(90vw, 760px);
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+}
+
+.preview-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.preview-dialog-shell {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.preview-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.preview-dialog-header h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+#preview-output {
+  width: 100%;
+  min-height: 360px;
+  margin: 0;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  color: #111827;
+  font-family:
+    "JetBrains Mono",
+    "SF Mono",
+    "Roboto Mono",
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.preview-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
 }

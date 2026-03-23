@@ -17,6 +17,7 @@ import {
 import {
   toEnrichedExportItem,
   toRawExportItem,
+  serializeExportItems,
 } from "../shared/export.js";
 import {
   buildValidationResult,
@@ -379,6 +380,59 @@ async function handleMessage(message, sender) {
         started: true,
         enrichment: startedState.enrichment,
       };
+    }
+
+    case MESSAGE_TYPES.exportPreviewRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for preview" };
+      }
+
+      const state = getSerializableState(tabId);
+      const mode = message.mode === "enriched" ? "enriched" : "raw";
+
+      if (mode === "enriched") {
+        if (
+          state.enrichment?.status !== ENRICHMENT_STATES.completed ||
+          !state.enrichment?.readyForDownload
+        ) {
+          return {
+            ok: false,
+            error: "Enriched preview is available after enrichment completes.",
+          };
+        }
+      }
+
+      const items =
+        mode === "enriched"
+          ? getEnrichedItems(tabId).map(toEnrichedExportItem)
+          : state.items.map(toRawExportItem);
+
+      return {
+        ok: true,
+        mode,
+        count: items.length,
+        filename: buildExportFilename(mode),
+        json: serializeExportItems(items),
+      };
+    }
+
+    case MESSAGE_TYPES.debugFeedDumpRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for feed dump" };
+      }
+
+      const response = await chrome.tabs.sendMessage(tabId, {
+        type: MESSAGE_TYPES.debugFeedDumpRequest,
+      });
+
+      if (!response?.ok) {
+        return {
+          ok: false,
+          error: response?.error || "Failed to capture feed dump.",
+        };
+      }
+
+      return response;
     }
 
     case MESSAGE_TYPES.enrichmentCancelRequest: {

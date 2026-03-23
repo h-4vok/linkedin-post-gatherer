@@ -77,6 +77,8 @@ export const MESSAGE_TYPES = {
   log: "collector/log",
   exportRawRequest: "collector/export-raw-request",
   exportEnrichedRequest: "collector/export-enriched-request",
+  exportPreviewRequest: "collector/export-preview-request",
+  debugFeedDumpRequest: "collector/debug-feed-dump-request",
   enrichmentCancelRequest: "collector/enrichment-cancel-request",
   profileExtractRequest: "collector/profile-extract-request",
   exportResult: "collector/export-result",

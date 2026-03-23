@@ -18,7 +18,7 @@
         <p class="section-label">Operator note</p>
         <p class="status-copy">
           Run control, counters and export stay in the injected LinkedIn panel.
-          This popup is now reserved for configuration and debug reset only.
+          This popup is reserved for configuration and debug tools.
         </p>
       </section>
 
@@ -59,8 +59,51 @@
         </button>
       </section>
 
+      <section class="activity-panel">
+        <div class="activity-header">
+          <span class="section-label">Debug tools</span>
+        </div>
+        <p class="status-copy">
+          Capture a LinkedIn feed dump or inspect the current export JSON
+          without downloading it.
+        </p>
+        <div class="button-stack">
+          <button id="capture-feed-dump" type="button" class="secondary-button">
+            Capture feed DOM dump
+          </button>
+          <button id="preview-json-raw" type="button" class="secondary-button">
+            Preview raw JSON
+          </button>
+          <button id="preview-json-enriched" type="button" class="secondary-button">
+            Preview enriched JSON
+          </button>
+        </div>
+      </section>
+
       <p id="popup-feedback" class="feedback-copy" aria-live="polite"></p>
     </div>
+
+    <dialog id="preview-dialog" class="preview-dialog">
+      <form method="dialog" class="preview-dialog-shell">
+        <div class="preview-dialog-header">
+          <div>
+            <p class="section-label" id="preview-kind">Preview</p>
+            <h2 id="preview-title">Debug output</h2>
+          </div>
+          <button id="preview-close" type="submit" class="secondary-button">
+            Close
+          </button>
+        </div>
+        <p id="preview-meta" class="status-copy"></p>
+        <textarea id="preview-output" readonly spellcheck="false"></textarea>
+        <div class="preview-dialog-actions">
+          <button id="preview-copy" type="button" class="primary-button">
+            Copy
+          </button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/ui/popup/main.js"></script>
   </body>
 </html>

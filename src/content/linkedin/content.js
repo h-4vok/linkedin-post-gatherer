@@ -65,6 +65,8 @@
     log: "collector/log",
     exportRawRequest: "collector/export-raw-request",
     exportEnrichedRequest: "collector/export-enriched-request",
+    exportPreviewRequest: "collector/export-preview-request",
+    debugFeedDumpRequest: "collector/debug-feed-dump-request",
     profileExtractRequest: "collector/profile-extract-request",
   };
 
@@ -242,6 +244,14 @@
       sendResponse({
         ok: true,
         profile: extractProfileSignals(),
+      });
+      return true;
+    }
+
+    if (message?.type === MESSAGE_TYPES.debugFeedDumpRequest) {
+      sendResponse({
+        ok: true,
+        dump: buildFeedDebugDump(),
       });
       return true;
     }
@@ -835,6 +845,80 @@
         return text === label;
       });
     });
+  }
+
+  function buildFeedDebugDump() {
+    const feedContainer = findFeedContainer(document);
+
+    if (!feedContainer) {
+      return {
+        error: "NO_FEED_FOUND",
+      };
+    }
+
+    const feedPosts = findPostElements(feedContainer);
+    const samplePosts = feedPosts.slice(0, 8);
+
+    return {
+      capturedAt: new Date().toISOString(),
+      url: window.location.href,
+      title: document.title,
+      page: {
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+      },
+      feed: getElementDebugSummary(feedContainer, {
+        postCount: feedPosts.length,
+      }),
+      scrollChain: buildScrollChain(feedContainer),
+      posts: samplePosts.map(function (postElement, index) {
+        return {
+          index: index,
+          ...getElementDebugSummary(postElement, {
+            textPreview: getElementTextPreview(postElement),
+            html: getTruncatedOuterHtml(postElement),
+          }),
+        };
+      }),
+    };
+  }
+
+  function buildScrollChain(element) {
+    const chain = [];
+    let current = element;
+
+    while (current) {
+      chain.push(getElementDebugSummary(current, {
+        scrollable: isScrollableElement(current),
+        clientHeight: current.clientHeight,
+        scrollHeight: current.scrollHeight,
+        scrollTop: current.scrollTop,
+      }));
+      current = current.parentElement;
+    }
+
+    return chain;
+  }
+
+  function getElementDebugSummary(element, extra) {
+    return {
+      tag: element.tagName,
+      id: element.id || "",
+      className: typeof element.className === "string" ? element.className : "",
+      childListItems: element.querySelectorAll
+        ? element.querySelectorAll(POST_SELECTOR).length
+        : 0,
+      ...extra,
+    };
+  }
+
+  function getElementTextPreview(element) {
+    return normalizeWhitespace(element?.innerText || "").slice(0, 800);
+  }
+
+  function getTruncatedOuterHtml(element) {
+    return String(element?.outerHTML || "").slice(0, 20000);
   }
 
   function findRelationshipSpan(postElement) {
