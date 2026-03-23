@@ -50,6 +50,16 @@ function hasRelationshipMarker(text) {
   return RELATIONSHIP_MARKERS.some((marker) => normalized.includes(marker));
 }
 
+function normalizePersonKey(value) {
+  return normalizeWhitespace(value || "").toLowerCase();
+}
+
+function normalizePostPreview(text) {
+  return normalizeWhitespace(text || "")
+    .replace(/^feed post\s+/i, "")
+    .trim();
+}
+
 export function findFeedContainer(root = document) {
   return root.querySelector(FEED_SELECTOR);
 }
@@ -156,41 +166,154 @@ function extractAuthorFromProfileAnchors(postElement) {
   return null;
 }
 
-export function extractAuthor(postElement) {
+function collectIdentityCandidates(postElement) {
+  const seen = new Set();
+  const candidates = [];
+
+  function pushCandidate(value) {
+    const cleaned = cleanPersonLabel(value);
+
+    if (!cleaned) {
+      return;
+    }
+
+    const key = normalizePersonKey(cleaned);
+
+    if (!key || seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    candidates.push(cleaned);
+  }
+
   const ariaLabelAuthor = extractAuthorFromAriaLabels(postElement);
 
   if (ariaLabelAuthor) {
-    return ariaLabelAuthor;
+    pushCandidate(ariaLabelAuthor);
   }
 
   const relationshipSpan = findRelationshipSpan(postElement);
 
-  if (!relationshipSpan) {
-    return extractAuthorFromProfileAnchors(postElement);
+  if (relationshipSpan) {
+    let current = relationshipSpan;
+
+    while (current && current !== postElement) {
+      const text = normalizeWhitespace(current.textContent || "");
+      const author = removeRelationshipMarker(text);
+
+      if (author && author !== text) {
+        pushCandidate(author);
+        break;
+      }
+
+      current = current.parentElement;
+    }
   }
 
-  let current = relationshipSpan;
+  const profileAnchorAuthor = extractAuthorFromProfileAnchors(postElement);
 
-  while (current && current !== postElement) {
-    const text = normalizeWhitespace(current.textContent || "");
-    const author = removeRelationshipMarker(text);
+  if (profileAnchorAuthor) {
+    pushCandidate(profileAnchorAuthor);
+  }
 
-    if (author && author !== text) {
-      return author;
+  const labelledElements = Array.from(postElement.querySelectorAll("[aria-label]"));
+
+  for (const element of labelledElements) {
+    const label = normalizeWhitespace(element.getAttribute("aria-label") || "");
+
+    if (!hasRelationshipMarker(label)) {
+      continue;
     }
 
-    current = current.parentElement;
+    pushCandidate(removeRelationshipMarker(label));
   }
 
-  return extractAuthorFromProfileAnchors(postElement);
+  const relationshipCandidates = Array.from(postElement.querySelectorAll("span, p"));
+
+  for (const candidate of relationshipCandidates) {
+    const text = normalizeWhitespace(candidate.textContent || "");
+
+    if (!hasRelationshipMarker(text)) {
+      continue;
+    }
+
+    pushCandidate(removeRelationshipMarker(text));
+  }
+
+  const anchors = Array.from(
+    postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+  );
+
+  for (const anchor of anchors) {
+    pushCandidate(anchor.textContent || "");
+  }
+
+  return candidates;
 }
 
-export function extractRepostMetadata(postElement) {
+export function extractAuthor(postElement, options = {}) {
+  const excludedKeys = new Set(
+    (options.excludeNames || []).map((value) => normalizePersonKey(value)),
+  );
+
+  for (const candidate of collectIdentityCandidates(postElement)) {
+    if (!excludedKeys.has(normalizePersonKey(candidate))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function extractLeadingSocialSignal(postElement, author) {
+  const normalizedAuthor = normalizeWhitespace(author || "");
+
+  if (!normalizedAuthor) {
+    return null;
+  }
+
+  const preview = normalizePostPreview(postElement.textContent || "");
+  const authorIndex = preview.indexOf(normalizedAuthor);
+
+  if (authorIndex <= 0) {
+    return null;
+  }
+
+  const prefix = preview.slice(0, authorIndex).trim();
+  const repostMatch = prefix.match(
+    /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
+  );
+
+  if (repostMatch) {
+    return {
+      kind: "repost",
+      actor: cleanPersonLabel(repostMatch[1]),
+    };
+  }
+
+  const socialMatch = prefix.match(
+    /^(.*?)\s+(likes this|loves this|supports this|found this insightful)$/i,
+  );
+
+  if (socialMatch) {
+    return {
+      kind: "social",
+      actor: cleanPersonLabel(socialMatch[1]),
+    };
+  }
+
+  return null;
+}
+
+export function extractRepostMetadata(postElement, author = null) {
   const paragraphs = Array.from(postElement.querySelectorAll("p"));
 
   for (const paragraph of paragraphs) {
     const text = normalizeWhitespace(paragraph.textContent || "");
-    const repostMatch = text.match(/^(.*?)\s+reposted this$/i);
+    const repostMatch = text.match(
+      /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
+    );
 
     if (repostMatch) {
       return {
@@ -207,6 +330,15 @@ export function extractRepostMetadata(postElement) {
         reposted_by: null,
       };
     }
+  }
+
+  const leadingSignal = extractLeadingSocialSignal(postElement, author);
+
+  if (leadingSignal?.kind === "repost" && leadingSignal.actor) {
+    return {
+      is_repost: true,
+      reposted_by: leadingSignal.actor,
+    };
   }
 
   return {
@@ -343,13 +475,19 @@ export function analyzePostElement(postElement, now = new Date()) {
     return { status: "skipped", reason: "promoted" };
   }
 
-  const author = extractAuthor(postElement);
+  const initialAuthor = extractAuthor(postElement);
 
-  if (!author) {
+  if (!initialAuthor) {
     return { status: "skipped", reason: "missing-author" };
   }
 
-  const repostMetadata = extractRepostMetadata(postElement);
+  const repostMetadata = extractRepostMetadata(postElement, initialAuthor);
+  const author =
+    repostMetadata.is_repost && repostMetadata.reposted_by
+      ? extractAuthor(postElement, {
+          excludeNames: [repostMetadata.reposted_by],
+        }) || initialAuthor
+      : initialAuthor;
 
   return {
     status: "accepted",
