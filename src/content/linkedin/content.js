@@ -1092,7 +1092,7 @@
     );
   }
 
-  async function resolvePostPermalink(postElement, previousLink = null) {
+  async function resolvePostPermalink(postElement, seenLinks = new Set()) {
     const overflowButton = findPostOverflowButton(postElement);
 
     if (!overflowButton) {
@@ -1119,19 +1119,25 @@
       return null;
     }
 
-    logPage("permalink-copy-link-click");
-    copyLinkItem.click();
-    await sleep(200);
-    const clipboardUrl = normalizeCapturedPermalink(
-      await readClipboardPermalink(),
+    const clipboardBeforeClick = normalizeCapturedPermalink(
+      await readClipboardPermalink(0),
     );
+
+    logPage("permalink-copy-link-click", {
+      previousClipboardLink: clipboardBeforeClick,
+    });
+    copyLinkItem.click();
+    const clipboardUrl = await waitForFreshPermalink(clipboardBeforeClick, {
+      timeoutMs: 2200,
+      pollMs: 100,
+    });
     closeFloatingMenu(overflowButton);
 
     if (clipboardUrl) {
-      if (isDuplicatePermalink(clipboardUrl, previousLink)) {
-        logPage("permalink-duplicate-detected", {
+      if (seenLinks.has(clipboardUrl)) {
+        logPage("permalink-seen-link-detected", {
           candidate: clipboardUrl,
-          previousLink: previousLink,
+          seenCount: seenLinks.size,
         });
         return null;
       }
@@ -1144,13 +1150,15 @@
     return null;
   }
 
-  async function readClipboardPermalink() {
+  async function readClipboardPermalink(settleDelayMs = 150) {
     if (!navigator.clipboard?.readText) {
       logPage("permalink-clipboard-unavailable");
       return null;
     }
 
-    await sleep(150);
+    if (settleDelayMs > 0) {
+      await sleep(settleDelayMs);
+    }
 
     try {
       const text = (await navigator.clipboard.readText()).trim();
@@ -1180,8 +1188,36 @@
     return normalized;
   }
 
-  function isDuplicatePermalink(candidate, previousLink) {
-    return Boolean(candidate && previousLink && candidate === previousLink);
+  async function waitForFreshPermalink(previousClipboardLink, options = {}) {
+    const timeoutMs = Math.max(200, options.timeoutMs || 2000);
+    const pollMs = Math.max(50, options.pollMs || 100);
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const candidate = normalizeCapturedPermalink(
+        await readClipboardPermalink(0),
+      );
+
+      if (candidate && candidate !== previousClipboardLink) {
+        return candidate;
+      }
+
+      await sleep(pollMs);
+    }
+
+    const fallbackCandidate = normalizeCapturedPermalink(
+      await readClipboardPermalink(0),
+    );
+
+    if (fallbackCandidate && fallbackCandidate !== previousClipboardLink) {
+      return fallbackCandidate;
+    }
+
+    logPage("permalink-clipboard-did-not-change", {
+      previousClipboardLink: previousClipboardLink,
+      timeoutMs: timeoutMs,
+    });
+    return null;
   }
 
   async function waitForElement(getElement, timeoutMs) {
@@ -1244,7 +1280,7 @@
   async function scanFeedPosts(feedContainer) {
     const acceptedItems = [];
     const skippedItems = [];
-    let previousAcceptedLink = null;
+    const seenLinks = new Set();
 
     for (const postElement of findPostElements(feedContainer)) {
       const currentElementSignature = normalizeWhitespace(
@@ -1282,9 +1318,9 @@
         repostMetadata,
         new Date(),
       );
-      item.link = await resolvePostPermalink(postElement, previousAcceptedLink);
+      item.link = await resolvePostPermalink(postElement, seenLinks);
       if (item.link) {
-        previousAcceptedLink = item.link;
+        seenLinks.add(item.link);
       }
       acceptedItems.push(item);
     }
