@@ -21,6 +21,7 @@ Use this checklist before saying a task is done, before committing, and before o
 - `npm run lint`
 - `npm test`
 - `npm run build`
+- `npm run prepush`
 - Run any extra targeted validation required by the change scope, such as a manual unpacked-extension smoke test when touching manifest, content scripts, or cross-context messaging.
 - For collection-flow changes, validate the configured capture limit, scroll pacing bounds, and `chrome.storage.local` behavior.
 

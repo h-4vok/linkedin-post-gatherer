@@ -9,6 +9,7 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - Stack: `JavaScript` + `Vite`
 - UI: floating control console plus popup backup, with quick target presets, live metrics, and activity log
 - AI validation: optional Gemini AI Studio review from the popup, with free-tier-aware serial processing and fallback states
+- Debugging: popup previews for feed dumps, raw/enriched exports, and ignored-post samples
 - Product mode: local collection and local export only
 
 This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
@@ -51,6 +52,7 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - `npm run lint`
 - `npm run format`
 - `npm run format:write`
+- `npm run prepush`
 - `npm test`
 
 ## Docs Map

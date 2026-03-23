@@ -18,29 +18,17 @@ export function getDefaultPanelPosition() {
   return { ...DEFAULT_POSITION };
 }
 
-export function clampPanelPosition(
-  position,
-  viewport = {},
-  { minimized = false } = {},
-) {
+export function clampPanelPosition(position, viewport = {}, { minimized = false } = {}) {
   const width = minimized ? PANEL_SIZE.minimizedWidth : PANEL_SIZE.expandedWidth;
-  const height = minimized
-    ? PANEL_SIZE.minimizedHeight
-    : PANEL_SIZE.expandedHeight;
+  const height = minimized ? PANEL_SIZE.minimizedHeight : PANEL_SIZE.expandedHeight;
   const viewportWidth = ensureNumber(viewport.width, 1280);
   const viewportHeight = ensureNumber(viewport.height, 720);
   const maxRight = Math.max(12, viewportWidth - width - 12);
   const maxTop = Math.max(12, viewportHeight - height - 12);
 
   return {
-    top: Math.min(
-      Math.max(12, ensureNumber(position?.top, DEFAULT_POSITION.top)),
-      maxTop,
-    ),
-    right: Math.min(
-      Math.max(12, ensureNumber(position?.right, DEFAULT_POSITION.right)),
-      maxRight,
-    ),
+    top: Math.min(Math.max(12, ensureNumber(position?.top, DEFAULT_POSITION.top)), maxTop),
+    right: Math.min(Math.max(12, ensureNumber(position?.right, DEFAULT_POSITION.right)), maxRight),
   };
 }
 
@@ -130,4 +118,3 @@ export function createPanelMarkup() {
     </section>
   `;
 }
-

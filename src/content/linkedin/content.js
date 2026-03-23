@@ -1,13 +1,11 @@
 (function () {
-  const FEED_SELECTOR =
-    'div[componentkey="container-update-list_mainFeed-lazy-container"]';
+  const FEED_SELECTOR = 'div[componentkey="container-update-list_mainFeed-lazy-container"]';
   const POST_SELECTOR = 'div[role="listitem"]';
   const PROMOTED_LABELS = ["Promoted", "Publicidad"];
   const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
   const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
   const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
-  const OVERFLOW_BUTTON_SELECTOR =
-    'button[aria-label*="Open control menu for post"]';
+  const OVERFLOW_BUTTON_SELECTOR = 'button[aria-label*="Open control menu for post"]';
   const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
   const MENU_ITEM_SELECTOR = '[role="menuitem"]';
   const PANEL_ROOT_ID = "linkedin-intelligence-harvester-root";
@@ -36,7 +34,7 @@
   const SCROLL_DELAY_MAX_MS = 3500;
   const LONG_WAIT_MS = 20000;
   const STALLED_WAIT_LIMIT = 3;
-  const ACTIVITY_LIMIT = 30;
+  const ACTIVITY_LIMIT = 500;
   const TARGET_PRESETS = [25, 50, 100];
   const AI_QUEUE_PHASES = {
     idle: "idle",
@@ -66,8 +64,10 @@
     exportRawRequest: "collector/export-raw-request",
     exportEnrichedRequest: "collector/export-enriched-request",
     exportPreviewRequest: "collector/export-preview-request",
+    debugIgnoredSamplesRequest: "collector/debug-ignored-samples-request",
     debugFeedDumpRequest: "collector/debug-feed-dump-request",
     profileExtractRequest: "collector/profile-extract-request",
+    aiActivity: "collector/ai-activity",
   };
 
   const STATUS_TEXT = {
@@ -90,6 +90,7 @@
   const uiState = {
     count: 0,
     repostCount: 0,
+    ignoredSamples: [],
     status: STATUS_TEXT.idle,
     runState: RUN_STATES.idle,
     targetCount: TARGET_COUNT_DEFAULT,
@@ -139,10 +140,7 @@
 
   async function hydrateUiState() {
     const [stored, response] = await Promise.all([
-      safeStorageLocalGet([
-        STORAGE_KEYS.panelPosition,
-        STORAGE_KEYS.panelMinimized,
-      ]),
+      safeStorageLocalGet([STORAGE_KEYS.panelPosition, STORAGE_KEYS.panelMinimized]),
       safeSendMessage({
         type: MESSAGE_TYPES.getState,
       }),
@@ -150,6 +148,9 @@
 
     uiState.count = response?.state?.count || 0;
     uiState.repostCount = response?.state?.repostCount || 0;
+    uiState.ignoredSamples = Array.isArray(response?.state?.ignoredSamples)
+      ? response.state.ignoredSamples
+      : [];
     uiState.status = response?.state?.status || STATUS_TEXT.idle;
     uiState.runState = response?.state?.runState || RUN_STATES.idle;
     uiState.targetCount = clampTargetCount(response?.state?.targetCount);
@@ -160,7 +161,7 @@
     uiState.aiQueue = mergeAiQueueState(response?.state?.aiQueue);
     uiState.panelPosition = clampPanelPosition(
       stored[STORAGE_KEYS.panelPosition] || DEFAULT_PANEL_POSITION,
-      { minimized: stored[STORAGE_KEYS.panelMinimized] || false },
+      { minimized: stored[STORAGE_KEYS.panelMinimized] || false }
     );
     uiState.panelMinimized = Boolean(stored[STORAGE_KEYS.panelMinimized]);
     pushActivity(uiState.status);
@@ -174,14 +175,12 @@
     if (changes[STORAGE_KEYS.panelPosition]) {
       uiState.panelPosition = clampPanelPosition(
         changes[STORAGE_KEYS.panelPosition].newValue || DEFAULT_PANEL_POSITION,
-        { minimized: uiState.panelMinimized },
+        { minimized: uiState.panelMinimized }
       );
     }
 
     if (changes[STORAGE_KEYS.panelMinimized]) {
-      uiState.panelMinimized = Boolean(
-        changes[STORAGE_KEYS.panelMinimized].newValue,
-      );
+      uiState.panelMinimized = Boolean(changes[STORAGE_KEYS.panelMinimized].newValue);
     }
 
     renderPanel();
@@ -190,15 +189,11 @@
   function handleRuntimeMessage(message, _sender, sendResponse) {
     if (message?.type === MESSAGE_TYPES.countUpdated) {
       if ((message.count || 0) > uiState.count) {
-        pushActivity(
-          "Captured " + ((message.count || 0) - uiState.count) + " new posts.",
-        );
+        pushActivity("Captured " + ((message.count || 0) - uiState.count) + " new posts.");
       }
 
       if ((message.repostCount || 0) > uiState.repostCount) {
-        pushActivity(
-          "Detected " + (message.repostCount || 0) + " reposts so far.",
-        );
+        pushActivity("Detected " + (message.repostCount || 0) + " reposts so far.");
       }
 
       if ((message.stalledWaitCount || 0) > uiState.stalledWaitCount) {
@@ -207,7 +202,7 @@
             (message.stalledWaitCount || 0) +
             " / " +
             STALLED_WAIT_LIMIT +
-            " scheduled.",
+            " scheduled."
         );
       }
 
@@ -240,6 +235,12 @@
       return;
     }
 
+    if (message?.type === MESSAGE_TYPES.aiActivity) {
+      pushActivity(message.text);
+      renderPanel();
+      return;
+    }
+
     if (message?.type === MESSAGE_TYPES.profileExtractRequest) {
       sendResponse({
         ok: true,
@@ -252,6 +253,14 @@
       sendResponse({
         ok: true,
         dump: buildFeedDebugDump(),
+      });
+      return true;
+    }
+
+    if (message?.type === MESSAGE_TYPES.debugIgnoredSamplesRequest) {
+      sendResponse({
+        ok: true,
+        dump: buildIgnoredSamplesDump(),
       });
       return true;
     }
@@ -276,6 +285,7 @@
       processedElements = new WeakMap();
       uiState.count = 0;
       uiState.repostCount = 0;
+      uiState.ignoredSamples = [];
       uiState.status = STATUS_TEXT.attached;
       uiState.runState = RUN_STATES.idle;
       uiState.noProgressCycles = 0;
@@ -329,8 +339,7 @@
     const overflowY = style.overflowY || "";
 
     return (
-      /(auto|scroll|overlay)/i.test(overflowY) &&
-      element.scrollHeight > element.clientHeight + 8
+      /(auto|scroll|overlay)/i.test(overflowY) && element.scrollHeight > element.clientHeight + 8
     );
   }
 
@@ -512,10 +521,26 @@
       return;
     }
 
-    uiState.activityItems = [message, ...uiState.activityItems].slice(
-      0,
-      ACTIVITY_LIMIT,
-    );
+    uiState.activityItems = [message, ...uiState.activityItems].slice(0, ACTIVITY_LIMIT);
+  }
+
+  async function copyActivityItems() {
+    const text = uiState.activityItems.join("\n");
+
+    if (!text) {
+      pushActivity("Nothing to copy.");
+      renderPanel();
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      pushActivity("Activity log copied.");
+    } catch {
+      pushActivity("Copy failed. Use manual selection from the activity list.");
+    }
+
+    renderPanel();
   }
 
   function createEmptyAiCounts() {
@@ -561,7 +586,7 @@
       uiState.aiQueue.phase !== AI_QUEUE_PHASES.processing
     ) {
       pushActivity(
-        "AI validation running for " + (nextAiQueue.pendingCount || 0) + " pending posts.",
+        "AI validation running for " + (nextAiQueue.pendingCount || 0) + " pending posts."
       );
     }
 
@@ -573,7 +598,7 @@
       pushActivity(
         "AI validation backing off after rate limit. Pending: " +
           (nextAiQueue.pendingCount || 0) +
-          ".",
+          "."
       );
     }
 
@@ -604,7 +629,7 @@
           (nextAiCounts.not_interested || 0) +
           ", unknown: " +
           (nextAiCounts.unknown || 0) +
-          ".",
+          "."
       );
     }
 
@@ -612,10 +637,7 @@
       pushActivity("AI marked 1 post as interested.");
     }
 
-    if (
-      (nextAiCounts.not_interested || 0) >
-      (uiState.aiCounts.not_interested || 0)
-    ) {
+    if ((nextAiCounts.not_interested || 0) > (uiState.aiCounts.not_interested || 0)) {
       pushActivity("AI marked 1 post as not_interested.");
     }
 
@@ -702,18 +724,11 @@
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff) {
-      return (
-        "Waiting before retry. " +
-        formatRetryCountdown(uiState.aiQueue.retryAfterUntil)
-      );
+      return "Waiting before retry. " + formatRetryCountdown(uiState.aiQueue.retryAfterUntil);
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.processing) {
-      return (
-        "Validating posts now. Pending: " +
-        (uiState.aiCounts.pending || 0) +
-        "."
-      );
+      return "Validating posts now. Pending: " + (uiState.aiCounts.pending || 0) + ".";
     }
 
     if ((uiState.aiCounts.pending || 0) === 0 && hasAiResults()) {
@@ -763,9 +778,7 @@
     }
 
     if (uiState.enrichment.readyForDownload) {
-      return uiState.aiCounts.pending > 0
-        ? "Download enriched (AI pending)"
-        : "Download enriched";
+      return uiState.aiCounts.pending > 0 ? "Download enriched (AI pending)" : "Download enriched";
     }
 
     return "Export enriched";
@@ -894,17 +907,31 @@
     };
   }
 
+  function buildIgnoredSamplesDump() {
+    return {
+      capturedAt: new Date().toISOString(),
+      url: window.location.href,
+      title: document.title,
+      count: uiState.ignoredSamples.length,
+      samples: uiState.ignoredSamples.map(function (sample) {
+        return { ...sample };
+      }),
+    };
+  }
+
   function buildScrollChain(element) {
     const chain = [];
     let current = element;
 
     while (current) {
-      chain.push(getElementDebugSummary(current, {
-        scrollable: isScrollableElement(current),
-        clientHeight: current.clientHeight,
-        scrollHeight: current.scrollHeight,
-        scrollTop: current.scrollTop,
-      }));
+      chain.push(
+        getElementDebugSummary(current, {
+          scrollable: isScrollableElement(current),
+          clientHeight: current.clientHeight,
+          scrollHeight: current.scrollHeight,
+          scrollTop: current.scrollTop,
+        })
+      );
       current = current.parentElement;
     }
 
@@ -916,9 +943,7 @@
       tag: element.tagName,
       id: element.id || "",
       className: typeof element.className === "string" ? element.className : "",
-      childListItems: element.querySelectorAll
-        ? element.querySelectorAll(POST_SELECTOR).length
-        : 0,
+      childListItems: element.querySelectorAll ? element.querySelectorAll(POST_SELECTOR).length : 0,
       ...extra,
     };
   }
@@ -954,7 +979,7 @@
     for (const marker of RELATIONSHIP_MARKERS) {
       const markerPattern = new RegExp(
         "\\s*[•\\-·]?\\s*" + escapeRegExp(marker) + "(?:\\s|$)",
-        "gi",
+        "gi"
       );
 
       if (markerPattern.test(cleaned)) {
@@ -972,7 +997,7 @@
 
   function extractAuthorFromProfileAnchors(postElement) {
     const anchors = Array.from(
-      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]')
     );
 
     for (const anchor of anchors) {
@@ -1056,7 +1081,7 @@
     }
 
     const anchors = Array.from(
-      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]')
     );
 
     for (const anchor of anchors) {
@@ -1070,7 +1095,7 @@
     const excludedKeys = new Set(
       (options.excludeNames || []).map(function (value) {
         return normalizePersonKey(value);
-      }),
+      })
     );
 
     for (const candidate of collectIdentityCandidates(postElement)) {
@@ -1097,9 +1122,7 @@
     }
 
     const prefix = preview.slice(0, authorIndex).trim();
-    const repostMatch = prefix.match(
-      /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
-    );
+    const repostMatch = prefix.match(/^(.*?)\s+(reposted this|reposted|shared this|shared)$/i);
 
     if (repostMatch) {
       return {
@@ -1109,7 +1132,7 @@
     }
 
     const socialMatch = prefix.match(
-      /^(.*?)\s+(likes this|loves this|supports this|found this insightful)$/i,
+      /^(.*?)\s+(likes this|loves this|supports this|found this insightful)$/i
     );
 
     if (socialMatch) {
@@ -1127,9 +1150,7 @@
 
     for (const paragraph of paragraphs) {
       const text = normalizeWhitespace(paragraph.textContent || "");
-      const repostMatch = text.match(
-        /^(.*?)\s+(reposted this|reposted|shared this|shared)$/i,
-      );
+      const repostMatch = text.match(/^(.*?)\s+(reposted this|reposted|shared this|shared)$/i);
 
       if (repostMatch) {
         return {
@@ -1138,9 +1159,7 @@
         };
       }
 
-      if (
-        /^(.*?)\s+(loves this|supports this|found this insightful)$/i.test(text)
-      ) {
+      if (/^(.*?)\s+(loves this|supports this|found this insightful)$/i.test(text)) {
         return {
           is_repost: false,
           reposted_by: null,
@@ -1164,9 +1183,7 @@
   }
 
   function extractPostText(postElement) {
-    const textBox = postElement.querySelector(
-      '[data-testid="expandable-text-box"]',
-    );
+    const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
 
     if (!textBox) {
       return null;
@@ -1211,16 +1228,14 @@
 
   function extractAuthorProfileUrl(postElement, author) {
     const anchors = Array.from(
-      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]'),
+      postElement.querySelectorAll('a[href*="/in/"], a[href*="/company/"]')
     );
     const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
 
     for (const anchor of anchors) {
       const href = anchor.getAttribute("href");
       const label = normalizeWhitespace(
-        [anchor.textContent || "", anchor.getAttribute("aria-label") || ""].join(
-          " ",
-        ),
+        [anchor.textContent || "", anchor.getAttribute("aria-label") || ""].join(" ")
       ).toLowerCase();
 
       if (!href) {
@@ -1250,10 +1265,7 @@
   }
 
   function buildFingerprint(postElement, author) {
-    const visibleText = normalizeWhitespace(postElement.textContent || "").slice(
-      0,
-      240,
-    );
+    const visibleText = normalizeWhitespace(postElement.textContent || "").slice(0, 240);
 
     return author.toLowerCase() + "::" + visibleText.toLowerCase();
   }
@@ -1289,7 +1301,7 @@
       Array.from(menuElement?.querySelectorAll(MENU_ITEM_SELECTOR) || []).find((item) =>
         normalizeWhitespace(item.textContent || "")
           .toLowerCase()
-          .includes("copy link to post"),
+          .includes("copy link to post")
       ) || null
     );
   }
@@ -1333,9 +1345,7 @@
     }
 
     logPage("permalink-menu-found");
-    const clipboardBeforeClick = normalizeCapturedPermalink(
-      await readClipboardPermalink(0),
-    );
+    const clipboardBeforeClick = normalizeCapturedPermalink(await readClipboardPermalink(0));
 
     logPage("permalink-copy-link-click", {
       previousClipboardLink: clipboardBeforeClick,
@@ -1402,7 +1412,7 @@
           keyCode: 27,
           which: 27,
           bubbles: true,
-        }),
+        })
       );
     } catch {
       document.body?.click();
@@ -1429,9 +1439,7 @@
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
-      const candidate = normalizeCapturedPermalink(
-        await readClipboardPermalink(0),
-      );
+      const candidate = normalizeCapturedPermalink(await readClipboardPermalink(0));
 
       if (candidate && candidate !== previousClipboardLink) {
         return candidate;
@@ -1440,9 +1448,7 @@
       await sleep(pollMs);
     }
 
-    const fallbackCandidate = normalizeCapturedPermalink(
-      await readClipboardPermalink(0),
-    );
+    const fallbackCandidate = normalizeCapturedPermalink(await readClipboardPermalink(0));
 
     if (fallbackCandidate && fallbackCandidate !== previousClipboardLink) {
       return fallbackCandidate;
@@ -1526,9 +1532,7 @@
 
     return {
       menuElement: lastMenuElement,
-      copyLinkItem: lastMenuElement
-        ? findCopyLinkMenuItem(lastMenuElement)
-        : null,
+      copyLinkItem: lastMenuElement ? findCopyLinkMenuItem(lastMenuElement) : null,
     };
   }
 
@@ -1541,9 +1545,7 @@
     let role = null;
 
     for (const selector of roleSelectors) {
-      const text = normalizeWhitespace(
-        document.querySelector(selector)?.textContent || "",
-      );
+      const text = normalizeWhitespace(document.querySelector(selector)?.textContent || "");
 
       if (text) {
         role = text;
@@ -1553,13 +1555,12 @@
 
     const pageText = normalizeWhitespace(document.body?.textContent || "");
     const followersMatch = pageText.match(
-      /(\d+(?:[.,]\d+)?)\s*([kKmM])?\+?\s*(followers|seguidores)\b/i,
+      /(\d+(?:[.,]\d+)?)\s*([kKmM])?\+?\s*(followers|seguidores)\b/i
     );
     let followers = null;
 
     if (followersMatch) {
-      followers =
-        followersMatch[1].replace(",", "") + (followersMatch[2] || "");
+      followers = followersMatch[1].replace(",", "") + (followersMatch[2] || "");
     }
 
     return {
@@ -1571,12 +1572,15 @@
   async function scanFeedPosts(feedContainer) {
     const acceptedItems = [];
     const skippedItems = [];
+    const skippedSamples = [];
     const seenLinks = new Set();
+    const capturedAt = new Date().toISOString();
 
     for (const postElement of findPostElements(feedContainer)) {
-      const currentElementSignature = normalizeWhitespace(
-        postElement.textContent || "",
-      ).slice(0, 240);
+      const currentElementSignature = normalizeWhitespace(postElement.textContent || "").slice(
+        0,
+        240
+      );
 
       if (processedElements.get(postElement) === currentElementSignature) {
         continue;
@@ -1586,6 +1590,7 @@
 
       if (isPromotedPost(postElement)) {
         skippedItems.push("promoted");
+        skippedSamples.push(buildSkippedSample(postElement, "promoted", capturedAt));
         continue;
       }
 
@@ -1593,6 +1598,7 @@
 
       if (!initialAuthor) {
         skippedItems.push("missing-author");
+        skippedSamples.push(buildSkippedSample(postElement, "missing-author", capturedAt));
         continue;
       }
 
@@ -1604,12 +1610,7 @@
             }) || initialAuthor
           : initialAuthor;
 
-      const item = buildNormalizedItem(
-        postElement,
-        author,
-        repostMetadata,
-        new Date(),
-      );
+      const item = buildNormalizedItem(postElement, author, repostMetadata, new Date());
       item.link = await resolvePostPermalink(postElement, seenLinks);
       if (item.link) {
         seenLinks.add(item.link);
@@ -1617,7 +1618,20 @@
       acceptedItems.push(item);
     }
 
-    return { acceptedItems: acceptedItems, skippedItems: skippedItems };
+    return {
+      acceptedItems: acceptedItems,
+      skippedItems: skippedItems,
+      skippedSamples: skippedSamples,
+    };
+  }
+
+  function buildSkippedSample(postElement, reason, capturedAt) {
+    return {
+      reason: reason,
+      captured_at: capturedAt,
+      text_preview: normalizeWhitespace(postElement.textContent || "").slice(0, 280),
+      html_preview: getTruncatedOuterHtml(postElement, 1200),
+    };
   }
 
   function summarizeSkippedReasons(skippedItems) {
@@ -1708,6 +1722,7 @@
       const response = await safeSendMessage({
         type: MESSAGE_TYPES.newItems,
         items: scanResult.acceptedItems,
+        skippedSamples: scanResult.skippedSamples,
       });
 
       addedCount = response?.addedCount || 0;
@@ -2259,13 +2274,40 @@
           line-height: 1.35;
         }
 
+        .harvester-activity-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .harvester-activity-copy {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          border-radius: 8px;
+          border: 1px solid #d1d5db;
+          background: #ffffff;
+          color: #374151;
+          font-size: 14px;
+          line-height: 1;
+          cursor: pointer;
+        }
+
+        .harvester-activity-copy:hover {
+          background: #f9fafb;
+        }
+
         .harvester-activity-log {
           display: grid;
           gap: 6px;
           margin: 0;
           padding: 0;
           list-style: none;
-          max-height: 74px;
+          max-height: 180px;
           overflow-y: auto;
         }
 
@@ -2419,7 +2461,17 @@
             <p class="harvester-ai-error harvester-feedback-copy">Last error: none</p>
           </section>
           <section class="harvester-activity">
-            <p class="harvester-activity-label">Activity</p>
+            <div class="harvester-activity-header">
+              <p class="harvester-activity-label">Activity</p>
+              <button
+                class="harvester-activity-copy"
+                type="button"
+                aria-label="Copy activity log"
+                title="Copy activity log"
+              >
+                ⧉
+              </button>
+            </div>
             <ul class="harvester-activity-log">
               <li>Waiting for LinkedIn feed...</li>
             </ul>
@@ -2464,6 +2516,7 @@
       aiCopy: shadowRoot.querySelector(".harvester-ai-copy"),
       aiError: shadowRoot.querySelector(".harvester-ai-error"),
       feedback: shadowRoot.querySelector(".harvester-feedback"),
+      activityCopyButton: shadowRoot.querySelector(".harvester-activity-copy"),
       activityLog: shadowRoot.querySelector(".harvester-activity-log"),
       chip: shadowRoot.querySelector(".harvester-chip"),
       presetButtons: Array.from(shadowRoot.querySelectorAll(".harvester-preset")),
@@ -2501,6 +2554,9 @@
     panel.exportEnrichedButton.addEventListener("click", function () {
       void exportCurrentBatch("enriched");
     });
+    panel.activityCopyButton.addEventListener("click", function () {
+      void copyActivityItems();
+    });
 
     renderPanel();
     return panel;
@@ -2518,22 +2574,19 @@
     panel.statusBadge.dataset.runState = uiState.runState;
     panel.targetInput.value = String(uiState.targetCount);
     panel.targetInput.disabled =
-      uiState.runState === RUN_STATES.running ||
-      uiState.runState === RUN_STATES.stopping;
+      uiState.runState === RUN_STATES.running || uiState.runState === RUN_STATES.stopping;
     panel.presetButtons.forEach(function (button) {
       const preset = clampTargetCount(button.dataset.targetPreset);
       button.classList.toggle("is-active", preset === uiState.targetCount);
       button.disabled =
-        uiState.runState === RUN_STATES.running ||
-        uiState.runState === RUN_STATES.stopping;
+        uiState.runState === RUN_STATES.running || uiState.runState === RUN_STATES.stopping;
     });
     panel.startButton.disabled =
       uiState.runState === RUN_STATES.running ||
       uiState.runState === RUN_STATES.stopping ||
       uiState.runState === RUN_STATES.unavailable;
     panel.stopButton.disabled =
-      uiState.runState !== RUN_STATES.running &&
-      uiState.runState !== RUN_STATES.stopping;
+      uiState.runState !== RUN_STATES.running && uiState.runState !== RUN_STATES.stopping;
     panel.exportRawButton.disabled = uiState.runState === RUN_STATES.unavailable;
     panel.exportEnrichedButton.disabled =
       uiState.runState === RUN_STATES.running ||
@@ -2545,21 +2598,12 @@
     panel.heroTarget.textContent = String(uiState.targetCount);
     panel.reposts.textContent = String(uiState.repostCount);
     panel.mode.textContent = formatRunState(uiState.runState);
-    panel.waitCount.textContent =
-      uiState.stalledWaitCount + " / " + STALLED_WAIT_LIMIT;
-    panel.enrichmentStatus.textContent = formatEnrichmentStatus(
-      uiState.enrichment.status,
-    );
+    panel.waitCount.textContent = uiState.stalledWaitCount + " / " + STALLED_WAIT_LIMIT;
+    panel.enrichmentStatus.textContent = formatEnrichmentStatus(uiState.enrichment.status);
     panel.enrichmentPosts.textContent =
-      "Posts " +
-      uiState.enrichment.processedPosts +
-      " / " +
-      uiState.enrichment.totalPosts;
+      "Posts " + uiState.enrichment.processedPosts + " / " + uiState.enrichment.totalPosts;
     panel.enrichmentAuthors.textContent =
-      "Authors " +
-      uiState.enrichment.processedAuthors +
-      " / " +
-      uiState.enrichment.totalAuthors;
+      "Authors " + uiState.enrichment.processedAuthors + " / " + uiState.enrichment.totalAuthors;
     panel.enrichmentCopy.textContent =
       uiState.enrichment.lastMessage || "No enrichment in progress.";
     panel.aiStatus.textContent = formatAiQueuePhase(uiState.aiQueue.phase);
@@ -2608,9 +2652,7 @@
 
     try {
       const response = await safeSendMessage({
-        type: isEnriched
-          ? MESSAGE_TYPES.exportEnrichedRequest
-          : MESSAGE_TYPES.exportRawRequest,
+        type: isEnriched ? MESSAGE_TYPES.exportEnrichedRequest : MESSAGE_TYPES.exportRawRequest,
       });
 
       if (!response?.ok) {
@@ -2647,10 +2689,7 @@
       return;
     }
 
-    pushActivity(
-      options?.logMessage ||
-        "Target updated to " + response.state.targetCount + ".",
-    );
+    pushActivity(options?.logMessage || "Target updated to " + response.state.targetCount + ".");
     renderPanel();
   }
 
@@ -2732,7 +2771,7 @@
         top: dragState.startTop + deltaY,
         right: dragState.startRight - deltaX,
       },
-      { minimized: false },
+      { minimized: false }
     );
 
     applyPanelPosition();

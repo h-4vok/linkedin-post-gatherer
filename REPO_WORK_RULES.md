@@ -32,6 +32,7 @@ Repository-specific working rules for `linkedin-post-gatherer`. This file applie
 - Lint: `npm run lint`
 - Format check: `npm run format`
 - Format write: `npm run format:write`
+- Pre-push gate: `npm run prepush`
 
 ## Mergeable Gate
 
@@ -48,6 +49,8 @@ Recommended local order before commit:
 2. `npm run lint`
 3. `npm test`
 4. `npm run build`
+
+The repo gate is enforced as a pre-push check through `npm run prepush`.
 
 ## Testing Rules
 

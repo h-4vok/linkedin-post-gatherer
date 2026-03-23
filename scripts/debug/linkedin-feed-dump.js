@@ -4,7 +4,9 @@ It is intentionally self-contained so it can be copied into DevTools as-is.
 */
 (function () {
   function text(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function isScrollable(element) {
@@ -21,7 +23,7 @@ It is intentionally self-contained so it can be copied into DevTools as-is.
 
   function findFeedRoot() {
     var explicitFeed = document.querySelector(
-      'div[componentkey="container-update-list_mainFeed-lazy-container"]',
+      'div[componentkey="container-update-list_mainFeed-lazy-container"]'
     );
 
     if (explicitFeed) {
@@ -53,7 +55,7 @@ It is intentionally self-contained so it can be copied into DevTools as-is.
   var postElements = Array.prototype.slice.call(
     feedRoot.querySelectorAll('div[role="listitem"]'),
     0,
-    8,
+    8
   );
   var scrollChain = [];
   var current = feedRoot;
@@ -62,8 +64,7 @@ It is intentionally self-contained so it can be copied into DevTools as-is.
     scrollChain.push({
       tag: current.tagName,
       id: current.id || "",
-      className:
-        typeof current.className === "string" ? current.className : "",
+      className: typeof current.className === "string" ? current.className : "",
       overflowY: window.getComputedStyle(current).overflowY,
       clientHeight: current.clientHeight,
       scrollHeight: current.scrollHeight,

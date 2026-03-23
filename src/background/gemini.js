@@ -1,12 +1,6 @@
-import {
-  AI_DEFAULT_CONFIG,
-  AI_RATE_LIMIT,
-  AI_STATUS,
-  STORAGE_KEYS,
-} from "../shared/constants.js";
+import { AI_DEFAULT_CONFIG, AI_RATE_LIMIT, AI_STATUS, STORAGE_KEYS } from "../shared/constants.js";
 
-const GEMINI_API_ROOT =
-  "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export async function getAiConfig() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.aiConfig);
@@ -29,7 +23,7 @@ export function normalizeAiConfig(config) {
     apiKey: String(config?.apiKey || "").trim(),
     model: String(config?.model || AI_DEFAULT_CONFIG.model).trim(),
     systemInstruction: String(
-      config?.systemInstruction || AI_DEFAULT_CONFIG.systemInstruction,
+      config?.systemInstruction || AI_DEFAULT_CONFIG.systemInstruction
     ).trim(),
   };
 }
@@ -64,7 +58,7 @@ export async function validatePostInterest(item, config, options = {}) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(buildGeminiRequest(item, config.systemInstruction)),
-    },
+    }
   );
 
   if (!response.ok) {
@@ -113,12 +107,7 @@ export function shouldRetryGeminiError(error, attempts) {
     return false;
   }
 
-  return [
-    "rate-limited",
-    "quota-exhausted",
-    "network-error",
-    "server-error",
-  ].includes(error?.kind);
+  return ["rate-limited", "quota-exhausted", "network-error", "server-error"].includes(error?.kind);
 }
 
 function buildGeminiRequest(item, systemInstruction) {
@@ -159,10 +148,7 @@ function parseGeminiDecision(payload) {
     return AI_STATUS.interested;
   }
 
-  if (
-    normalized === AI_STATUS.notInterested ||
-    normalized === "no_interesa"
-  ) {
+  if (normalized === AI_STATUS.notInterested || normalized === "no_interesa") {
     return AI_STATUS.notInterested;
   }
 
@@ -189,8 +175,7 @@ async function buildGeminiError(response) {
     payload = null;
   }
 
-  const message =
-    payload?.error?.message || `Gemini request failed with ${response.status}.`;
+  const message = payload?.error?.message || `Gemini request failed with ${response.status}.`;
   const error = new Error(message);
   error.status = response.status;
   error.retryAfterMs = getRetryAfterMs(response, payload);
@@ -200,10 +185,7 @@ async function buildGeminiError(response) {
     return error;
   }
 
-  if (
-    response.status === 403 &&
-    /quota/i.test(payload?.error?.message || "")
-  ) {
+  if (response.status === 403 && /quota/i.test(payload?.error?.message || "")) {
     error.kind = "quota-exhausted";
     return error;
   }
@@ -229,9 +211,8 @@ function getRetryAfterMs(response, payload) {
   }
 
   const detailDelay =
-    payload?.error?.details?.find(
-      (detail) => typeof detail?.retryDelay === "string",
-    )?.retryDelay || null;
+    payload?.error?.details?.find((detail) => typeof detail?.retryDelay === "string")?.retryDelay ||
+    null;
 
   const parsedDetailDelay = parseDurationToMs(detailDelay);
 

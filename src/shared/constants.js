@@ -1,7 +1,6 @@
 import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../background/default-system-instruction.js";
 
-export const FEED_SELECTOR =
-  'div[componentkey="container-update-list_mainFeed-lazy-container"]';
+export const FEED_SELECTOR = 'div[componentkey="container-update-list_mainFeed-lazy-container"]';
 export const POST_SELECTOR = 'div[role="listitem"]';
 export const PROMOTED_LABELS = ["Promoted", "Publicidad"];
 export const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
@@ -78,6 +77,7 @@ export const MESSAGE_TYPES = {
   exportRawRequest: "collector/export-raw-request",
   exportEnrichedRequest: "collector/export-enriched-request",
   exportPreviewRequest: "collector/export-preview-request",
+  debugIgnoredSamplesRequest: "collector/debug-ignored-samples-request",
   debugFeedDumpRequest: "collector/debug-feed-dump-request",
   enrichmentCancelRequest: "collector/enrichment-cancel-request",
   profileExtractRequest: "collector/profile-extract-request",
@@ -85,6 +85,7 @@ export const MESSAGE_TYPES = {
   getAiConfig: "collector/get-ai-config",
   setAiConfig: "collector/set-ai-config",
   aiStatusUpdated: "collector/ai-status-updated",
+  aiActivity: "collector/ai-activity",
 };
 
 export const STATUS_TEXT = {

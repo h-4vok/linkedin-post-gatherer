@@ -4,12 +4,11 @@ import "./style.css";
 const aiEnabledInput = document.querySelector("#ai-enabled");
 const aiApiKeyInput = document.querySelector("#ai-api-key");
 const aiModelInput = document.querySelector("#ai-model");
-const aiSystemInstructionInput = document.querySelector(
-  "#ai-system-instruction",
-);
+const aiSystemInstructionInput = document.querySelector("#ai-system-instruction");
 const saveAiConfigButton = document.querySelector("#save-ai-config");
 const resetDebugButton = document.querySelector("#reset-debug-data");
 const captureFeedDumpButton = document.querySelector("#capture-feed-dump");
+const previewIgnoredButton = document.querySelector("#preview-ignored-json");
 const previewRawButton = document.querySelector("#preview-json-raw");
 const previewEnrichedButton = document.querySelector("#preview-json-enriched");
 const popupFeedback = document.querySelector("#popup-feedback");
@@ -87,6 +86,10 @@ captureFeedDumpButton?.addEventListener("click", async () => {
   await openFeedDumpPreview();
 });
 
+previewIgnoredButton?.addEventListener("click", async () => {
+  await openIgnoredPreview();
+});
+
 previewRawButton?.addEventListener("click", async () => {
   await openExportPreview("raw");
 });
@@ -121,8 +124,7 @@ function renderAiConfig(config) {
   aiEnabledInput.checked = Boolean(config?.enabled);
   aiApiKeyInput.value = config?.apiKey || "";
   aiModelInput.value = config?.model || AI_DEFAULT_CONFIG.model;
-  aiSystemInstructionInput.value =
-    config?.systemInstruction || AI_DEFAULT_CONFIG.systemInstruction;
+  aiSystemInstructionInput.value = config?.systemInstruction || AI_DEFAULT_CONFIG.systemInstruction;
 }
 
 function renderResetStatus() {
@@ -161,9 +163,9 @@ async function refreshActiveState() {
 function renderDebugToolState() {
   const isLinkedIn = activeTabId != null && isLinkedInTab(activeTabUrl);
   const canPreviewRaw = Boolean(activeState);
+  const canPreviewIgnored = Boolean(activeState?.ignoredSamples?.length);
   const canPreviewEnriched =
-    activeState?.enrichment?.status === "completed" &&
-    activeState?.enrichment?.readyForDownload;
+    activeState?.enrichment?.status === "completed" && activeState?.enrichment?.readyForDownload;
 
   if (captureFeedDumpButton) {
     captureFeedDumpButton.disabled = !isLinkedIn;
@@ -171,6 +173,10 @@ function renderDebugToolState() {
 
   if (previewRawButton) {
     previewRawButton.disabled = !canPreviewRaw;
+  }
+
+  if (previewIgnoredButton) {
+    previewIgnoredButton.disabled = !canPreviewIgnored;
   }
 
   if (previewEnrichedButton) {
@@ -221,9 +227,7 @@ async function openExportPreview(mode) {
   }
 
   popupFeedback.textContent =
-    mode === "enriched"
-      ? "Preparing enriched JSON preview..."
-      : "Preparing raw JSON preview...";
+    mode === "enriched" ? "Preparing enriched JSON preview..." : "Preparing raw JSON preview...";
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -238,14 +242,43 @@ async function openExportPreview(mode) {
 
     openPreviewModal({
       kind: response.mode === "enriched" ? "Enriched JSON" : "Raw JSON",
-      title:
-        response.mode === "enriched"
-          ? "Export preview - enriched"
-          : "Export preview - raw",
+      title: response.mode === "enriched" ? "Export preview - enriched" : "Export preview - raw",
       meta: `${response.count || 0} items ready for preview.`,
       text: response.json,
     });
     popupFeedback.textContent = "JSON preview ready.";
+  } catch (error) {
+    popupFeedback.textContent = error.message;
+  } finally {
+    renderDebugToolState();
+  }
+}
+
+async function openIgnoredPreview() {
+  if (activeTabId == null) {
+    popupFeedback.textContent = "Open a tab with collected data before previewing ignored posts.";
+    return;
+  }
+
+  popupFeedback.textContent = "Preparing ignored-posts JSON preview...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.debugIgnoredSamplesRequest,
+      tabId: activeTabId,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to build ignored-posts preview");
+    }
+
+    openPreviewModal({
+      kind: "Ignored posts JSON",
+      title: "Debug preview - ignored posts",
+      meta: `${response.count || 0} discarded samples ready for inspection.`,
+      text: response.json,
+    });
+    popupFeedback.textContent = "Ignored-posts preview ready.";
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {

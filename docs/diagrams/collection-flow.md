@@ -12,23 +12,27 @@ flowchart TD
     G -->|No| I[Extract raw fields]
     I --> J[Normalize item shape]
     J --> K[Deduplicate and store locally]
+    J --> K2[Capture ignored sample buffer]
     K --> L[Queue Gemini validation]
     L --> M[Validate one post at a time]
     M --> N[Persist interest_validation]
-    N --> O[Update popup counter]
-    O --> P{Limit reached?}
-    P -->|No| C
-    P -->|Yes| Q{Export mode}
-    Q -->|Raw| R[Build raw JSON payload]
-    R --> S[Download linkedin_dump_[date].json]
-    Q -->|Enriched| T[Resolve unique authors]
-    T --> U[Reuse local author cache]
-    U --> V[Open one LinkedIn profile tab at a time]
-    V --> W[Extract role and followers]
-    W --> X[Classify author weight]
-    X --> Y[Update enrichment progress]
-    Y --> Z[Build enriched JSON payload]
-    Z --> AA[Download linkedin_dump_[date]_enriched.json]
+    N --> O[Emit AI activity to panel]
+    O --> P[Update popup counter]
+    P --> Q{Limit reached?}
+    Q -->|No| C
+    Q -->|Yes| R{Export mode}
+    R -->|Raw| S[Build raw JSON payload]
+    S --> T[Download linkedin_dump_[date].json]
+    R -->|Ignored debug| U[Build ignored-samples JSON preview]
+    U --> V[Copy or inspect in popup]
+    R -->|Enriched| W[Resolve unique authors]
+    W --> X[Reuse local author cache]
+    X --> Y[Open one LinkedIn profile tab at a time]
+    Y --> Z[Extract role and followers]
+    Z --> AA[Classify author weight]
+    AA --> AB[Update enrichment progress]
+    AB --> AC[Build enriched JSON payload]
+    AC --> AD[Download linkedin_dump_[date]_enriched.json]
 ```
 
 ## Notes
