@@ -34,19 +34,6 @@ Caso detectado:
   - crawler interrumpido por el usuario
   - crawler detenido por fragilidad o estancamiento
 
-## BL-004: Recuperar extraccion del link/permalink del post
-
-Revisar y restaurar la extraccion del link canonico del post en el flujo normalizado del harvester.
-
-Caso detectado:
-- El campo `link` hoy queda en `null` en el flujo actual, por lo que la extraccion del permalink no esta implementada o se perdio en algun cambio previo.
-
-### Resultado esperado
-- Identificar el selector o anchor correcto del permalink del post en LinkedIn.
-- Extraer y persistir el link canonico en el campo `link` del item normalizado.
-- Verificar que el export raw y enriched conserven el permalink correctamente.
-- Agregar cobertura de tests para evitar que vuelva a quedar en `null` sin detectar la regresion.
-
 ## BL-005: Normalizar formatter/linter en package.json y rules of engagement
 
 Resolver la desalineacion actual entre documentacion y tooling: el repo exige `npm run lint`, `npm run format` y `npm run format:write` en README, checklist y repo rules, pero esos scripts no existen hoy en `package.json`.
@@ -124,3 +111,82 @@ Caso detectado:
 - Hacer que los mensajes sean entendibles para operador, no solo tecnicos para debugging interno.
 - Mantener alineados el activity log, el estado visible de AI y el resultado persistido en `interest_validation`.
 - Evitar ruido excesivo si la corrida procesa muchos posts, definiendo un nivel de detalle razonable.
+
+## BL-010: Captura manual del DOM del feed desde el popup para regenerar fixtures de debugging
+
+Agregar en el popup del plugin una accion manual orientada a debugging que permita extraer el DOM relevante del feed de LinkedIn y mostrarlo inmediatamente al operador, para poder copiarlo y generar nuevos fixtures o revisar drift de selectores.
+
+Contexto:
+- Ya existe un test fixture-based de anti-fragilidad en `test/extractor.smoke.test.js`, pero hoy no hay una forma integrada en la extension para capturar rapido un nuevo dump del feed cuando LinkedIn cambia.
+- Tambien existe una utilidad manual en el repo (`scripts/debug/linkedin-feed-dump.js`), pero requiere abrir DevTools y pegar codigo.
+
+### Resultado esperado
+- Agregar un boton accesible desde el popup del plugin, no necesariamente desde el panel inyectado.
+- Al accionarlo:
+  - si encuentra el feed, abrir una vista tipo popup/modal con el dump serializado del feed listo para copiar
+  - si no encuentra el feed, mostrar un mensaje claro indicando que el feed no fue encontrado
+- El dump debe incluir suficiente informacion para debugging y para regenerar fixtures del test de extractor, por ejemplo:
+  - metadata basica de la pagina
+  - muestra de `listitem`
+  - `textPreview`
+  - HTML truncado de cada item
+  - metadata del contenedor/feed
+- Mantener esto como herramienta de debugging, no como parte del flujo normal de export.
+
+## BL-011: Vista previa del JSON final dentro del browser sin descargarlo
+
+Agregar una forma de inspeccionar dentro del browser el `JSON` final que hoy se descarga como archivo, para los casos en que el operador solo quiere revisarlo o copiar fragmentos sin bajar el archivo.
+
+### Resultado esperado
+- Exponer desde el popup una accion para abrir una vista previa del `JSON` resultante generado por la extension.
+- La vista puede ser un popup/modal simple y copiable.
+- Debe servir al menos para:
+  - ver el `JSON raw`
+  - copiarlo parcial o completamente
+- Idealmente dejar preparado el camino para mostrar tambien el `JSON enriched` cuando exista y este listo, sin obligar a descargarlo primero.
+- Mantener la descarga tradicional como opcion separada; la vista previa no la reemplaza.
+
+## BL-012: Refactor estructural de `src/content/linkedin/content.js` con single responsibility real
+
+Refactorizar `src/content/linkedin/content.js`, que hoy concentra demasiadas responsabilidades y se volvio un archivo gigante, dificil de mantener, depurar y testear.
+
+Contexto:
+- El archivo mezcla concerns de crawling, scanning del feed, extraccion, resolucion de permalink, UI del panel, logging, mensajeria con background, estado local y utilidades varias.
+- Esa mezcla hace dificil razonar sobre bugs, aislar responsabilidades y detectar regresiones.
+- Queremos aplicar single responsibility no solo a funciones, sino tambien a:
+  - folders
+  - archivos
+  - objetos / modulos
+
+### Resultado esperado
+- Dividir `src/content/linkedin/content.js` en modulos pequenos y coherentes por responsabilidad.
+- Definir una estructura de carpetas alineada con el dominio, por ejemplo separando claramente:
+  - crawler / run-loop
+  - scan / DOM feed discovery
+  - extraction / normalization
+  - permalink resolution
+  - panel UI
+  - messaging / bridge con background
+  - logging / telemetry
+  - shared helpers
+- Evitar archivos "cajon desastre" o carpetas armadas por conveniencia tecnica en vez de responsabilidad real.
+- Reducir el tamaño y complejidad ciclomática del entrypoint, dejando `content.js` como composicion/orquestacion liviana.
+- Mantener el comportamiento actual sin regresiones funcionales.
+- Agregar o ajustar tests donde haga falta para cubrir la nueva modularizacion y proteger el refactor.
+
+## BL-013: Recuperar deteccion correcta de `reposted_by` en reposts del feed
+
+Revisar y corregir la deteccion de reposts en el extractor del feed, porque hoy hay evidencia de posts compartidos/reposteados que terminan normalizados como si fueran posts originales.
+
+Caso detectado:
+- Algunos posts que parecen ser reposts terminan con `is_repost: false` y `reposted_by: null`.
+- En esos casos puede terminar persistiendose un permalink valido pero de una superficie distinta del post compartido, enmascarando el problema real de clasificacion.
+
+### Resultado esperado
+- Detectar correctamente cuando un item del feed es un repost/share y no un post original.
+- Poblar `reposted_by` con el nombre correcto de quien compartio el post cuando LinkedIn lo exponga.
+- Mantener `is_repost` alineado con `reposted_by` y con la semantica real del item en el feed.
+- Agregar fixtures/tests que cubran al menos:
+  - repost clasico con texto tipo `X reposted this`
+  - variantes actuales del markup de LinkedIn para shares/reposts
+  - casos sociales tipo `supports this` o `loves this` que no deben confundirse con repost

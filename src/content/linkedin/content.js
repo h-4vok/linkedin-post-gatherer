@@ -1092,7 +1092,7 @@
     );
   }
 
-  async function resolvePostPermalink(postElement, previousLink = null) {
+  async function resolvePostPermalink(postElement, seenLinks = new Set()) {
     const overflowButton = findPostOverflowButton(postElement);
 
     if (!overflowButton) {
@@ -1100,38 +1100,56 @@
       return null;
     }
 
+    const preExistingMenu = findFloatingPostMenu();
+
+    if (preExistingMenu) {
+      logPage("permalink-closing-stale-menu");
+      dismissFloatingMenu();
+      await waitForElementToDisappear(findFloatingPostMenu, 1000);
+    }
+
     logPage("permalink-menu-opening");
     overflowButton.click();
 
-    const menuElement = await waitForElement(findFloatingPostMenu, 1200);
+    const menuResolution = await waitForCopyLinkMenuItem({
+      previousMenu: preExistingMenu,
+      timeoutMs: 2500,
+      pollMs: 100,
+    });
+    const menuElement = menuResolution?.menuElement || null;
+    const copyLinkItem = menuResolution?.copyLinkItem || null;
 
     if (!menuElement) {
       logPage("permalink-menu-timeout");
       return null;
     }
 
-    logPage("permalink-menu-found");
-    const copyLinkItem = findCopyLinkMenuItem(menuElement);
-
     if (!copyLinkItem) {
-      logPage("permalink-copy-link-item-missing");
-      closeFloatingMenu(overflowButton);
+      logPage("permalink-copy-link-item-timeout");
+      await closeFloatingMenu();
       return null;
     }
 
-    logPage("permalink-copy-link-click");
-    copyLinkItem.click();
-    await sleep(200);
-    const clipboardUrl = normalizeCapturedPermalink(
-      await readClipboardPermalink(),
+    logPage("permalink-menu-found");
+    const clipboardBeforeClick = normalizeCapturedPermalink(
+      await readClipboardPermalink(0),
     );
-    closeFloatingMenu(overflowButton);
+
+    logPage("permalink-copy-link-click", {
+      previousClipboardLink: clipboardBeforeClick,
+    });
+    copyLinkItem.click();
+    const clipboardUrl = await waitForFreshPermalink(clipboardBeforeClick, {
+      timeoutMs: 2200,
+      pollMs: 100,
+    });
+    await closeFloatingMenu();
 
     if (clipboardUrl) {
-      if (isDuplicatePermalink(clipboardUrl, previousLink)) {
-        logPage("permalink-duplicate-detected", {
+      if (seenLinks.has(clipboardUrl)) {
+        logPage("permalink-seen-link-detected", {
           candidate: clipboardUrl,
-          previousLink: previousLink,
+          seenCount: seenLinks.size,
         });
         return null;
       }
@@ -1144,13 +1162,15 @@
     return null;
   }
 
-  async function readClipboardPermalink() {
+  async function readClipboardPermalink(settleDelayMs = 150) {
     if (!navigator.clipboard?.readText) {
       logPage("permalink-clipboard-unavailable");
       return null;
     }
 
-    await sleep(150);
+    if (settleDelayMs > 0) {
+      await sleep(settleDelayMs);
+    }
 
     try {
       const text = (await navigator.clipboard.readText()).trim();
@@ -1162,8 +1182,29 @@
     return null;
   }
 
-  function closeFloatingMenu(overflowButton) {
-    overflowButton?.click();
+  async function closeFloatingMenu() {
+    if (!findFloatingPostMenu()) {
+      return;
+    }
+
+    dismissFloatingMenu();
+    await waitForElementToDisappear(findFloatingPostMenu, 1000);
+  }
+
+  function dismissFloatingMenu() {
+    try {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+        }),
+      );
+    } catch {
+      document.body?.click();
+    }
   }
 
   function normalizeCapturedPermalink(value) {
@@ -1180,8 +1221,36 @@
     return normalized;
   }
 
-  function isDuplicatePermalink(candidate, previousLink) {
-    return Boolean(candidate && previousLink && candidate === previousLink);
+  async function waitForFreshPermalink(previousClipboardLink, options = {}) {
+    const timeoutMs = Math.max(200, options.timeoutMs || 2000);
+    const pollMs = Math.max(50, options.pollMs || 100);
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const candidate = normalizeCapturedPermalink(
+        await readClipboardPermalink(0),
+      );
+
+      if (candidate && candidate !== previousClipboardLink) {
+        return candidate;
+      }
+
+      await sleep(pollMs);
+    }
+
+    const fallbackCandidate = normalizeCapturedPermalink(
+      await readClipboardPermalink(0),
+    );
+
+    if (fallbackCandidate && fallbackCandidate !== previousClipboardLink) {
+      return fallbackCandidate;
+    }
+
+    logPage("permalink-clipboard-did-not-change", {
+      previousClipboardLink: previousClipboardLink,
+      timeoutMs: timeoutMs,
+    });
+    return null;
   }
 
   async function waitForElement(getElement, timeoutMs) {
@@ -1203,6 +1272,62 @@
     }
 
     return null;
+  }
+
+  async function waitForElementToDisappear(getElement, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (!getElement()) {
+        return true;
+      }
+
+      await sleep(50);
+    }
+
+    return !getElement();
+  }
+
+  async function waitForCopyLinkMenuItem(options = {}) {
+    const previousMenu = options.previousMenu || null;
+    const timeoutMs = Math.max(300, options.timeoutMs || 2000);
+    const pollMs = Math.max(50, options.pollMs || 100);
+    const deadline = Date.now() + timeoutMs;
+    let lastMenuElement = null;
+
+    while (Date.now() < deadline) {
+      const menuElement = findFloatingPostMenu();
+
+      if (menuElement) {
+        lastMenuElement = menuElement;
+
+        const copyLinkItem = findCopyLinkMenuItem(menuElement);
+        const menuChanged = menuElement !== previousMenu;
+
+        if (copyLinkItem && (menuChanged || !previousMenu)) {
+          return {
+            menuElement,
+            copyLinkItem,
+          };
+        }
+
+        if (copyLinkItem) {
+          return {
+            menuElement,
+            copyLinkItem,
+          };
+        }
+      }
+
+      await sleep(pollMs);
+    }
+
+    return {
+      menuElement: lastMenuElement,
+      copyLinkItem: lastMenuElement
+        ? findCopyLinkMenuItem(lastMenuElement)
+        : null,
+    };
   }
 
   function extractProfileSignals() {
@@ -1244,7 +1369,7 @@
   async function scanFeedPosts(feedContainer) {
     const acceptedItems = [];
     const skippedItems = [];
-    let previousAcceptedLink = null;
+    const seenLinks = new Set();
 
     for (const postElement of findPostElements(feedContainer)) {
       const currentElementSignature = normalizeWhitespace(
@@ -1259,11 +1384,6 @@
 
       if (isPromotedPost(postElement)) {
         skippedItems.push("promoted");
-        continue;
-      }
-
-      if (isSuggestedPost(postElement)) {
-        skippedItems.push("suggested");
         continue;
       }
 
@@ -1282,9 +1402,9 @@
         repostMetadata,
         new Date(),
       );
-      item.link = await resolvePostPermalink(postElement, previousAcceptedLink);
+      item.link = await resolvePostPermalink(postElement, seenLinks);
       if (item.link) {
-        previousAcceptedLink = item.link;
+        seenLinks.add(item.link);
       }
       acceptedItems.push(item);
     }
