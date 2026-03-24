@@ -125,6 +125,18 @@ Revisar y corregir la deteccion de reposts en el extractor del feed, porque habi
 - Se agregaron y ampliaron smoke tests para cubrir repost clasico, variantes mas cercanas al DOM actual y casos no-repost.
 - Se incorporo un fixture real adicional del feed extraido de LinkedIn para proteger el extractor frente a drift de markup.
 
+## BL-015: Redisenar `popup.html` para que sea mas comodo, alto y util como superficie de configuracion
+
+Estado: terminado.
+
+### Resultado entregado
+
+- Se rediseñó `popup.html` y `style.css` para aumentar el ancho mínimo a `480px` y mejorar el spacing general.
+- Se reorganizó la sección de Gemini en una estructura más clara con campos mejor distribuidos.
+- Se implementó un layout de 2 columnas para las herramientas de debug y reset para optimizar el espacio vertical.
+- Se mejoraron los estilos de inputs, textareas y botones, incluyendo estados de focus y hover más modernos.
+- Se mantuvo la compatibilidad con la lógica de `main.js` y se verificó con el build y tests del repo.
+
 ## BL-016: Simplificar la UI inyectada para que sea mas funcional y menos dashboard pesado
 
 Estado: terminado.
@@ -136,5 +148,3 @@ Estado: terminado.
 - Se movieron `Enrichment` y `AI validation` a secciones secundarias colapsables por defecto, manteniendo detalle accesible bajo demanda.
 - Se agregaron resúmenes compactos de estado para AI y enrichment en los encabezados colapsados.
 - Se mantuvo la compatibilidad del wiring operativo existente: start/stop, target, presets, export y activity log.
-
-

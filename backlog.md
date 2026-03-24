@@ -81,24 +81,6 @@ Caso detectado:
 - Mantener la descarga final como paso opcional separado, no como unica forma de inspeccionar el enriquecimiento.
 - Revisar nombres, acciones y copy del popup/panel para que reflejen mejor esa diferencia de comportamiento.
 
-## BL-015: Redisenar `popup.html` para que sea mas comodo, alto y util como superficie de configuracion
-
-El popup actual funciona, pero queda chico y apretado para operar con comodidad.
-
-Caso detectado:
-
-- La vista del popup se siente demasiado compacta para leer, copiar y revisar configuracion con tranquilidad.
-- El layout no acompaña bien el trabajo de debug ni la inspeccion de estado.
-- Falta una presentacion mas alta y mas respirada, especialmente para secciones como Gemini setup y herramientas de debug.
-
-### Resultado esperado
-
-- Redisenar `popup.html` para darle una apariencia mas alargada y comoda de usar.
-- Mejorar la jerarquia visual de secciones, copiado y estados de debug.
-- Evitar que la UI dependa de mucho scroll vertical corto o bloques demasiado comprimidos.
-- Mantener la popup como una superficie de configuracion y debug, pero mas legible y mas practica para uso repetido.
-- Ajustar estilos y spacing para que la experiencia sea consistente en ventanas chicas sin perder densidad de informacion.
-
 ## BL-012: Refactor estructural de `src/content/linkedin/content.js` con single responsibility real
 
 Refactorizar `src/content/linkedin/content.js`, que hoy concentra demasiadas responsabilidades y se volvio un archivo gigante, dificil de mantener, depurar y testear.
@@ -128,4 +110,3 @@ Contexto:
 - Reducir el tamaño y complejidad ciclomática del entrypoint, dejando `content.js` como composicion/orquestacion liviana.
 - Mantener el comportamiento actual sin regresiones funcionales.
 - Agregar o ajustar tests donde haga falta para cubrir la nueva modularizacion y proteger el refactor.
-
