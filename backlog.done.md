@@ -125,4 +125,16 @@ Revisar y corregir la deteccion de reposts en el extractor del feed, porque habi
 - Se agregaron y ampliaron smoke tests para cubrir repost clasico, variantes mas cercanas al DOM actual y casos no-repost.
 - Se incorporo un fixture real adicional del feed extraido de LinkedIn para proteger el extractor frente a drift de markup.
 
+## BL-016: Simplificar la UI inyectada para que sea mas funcional y menos dashboard pesado
+
+Estado: terminado.
+
+### Resultado entregado
+
+- Se simplifico de forma agresiva la UI inyectada para priorizar run control, estado de corrida y activity.
+- Se redujo el peso visual del panel (tipografias, espaciado, cards y jerarquia) para una lectura mas rapida en uso real.
+- Se movieron `Enrichment` y `AI validation` a secciones secundarias colapsables por defecto, manteniendo detalle accesible bajo demanda.
+- Se agregaron resúmenes compactos de estado para AI y enrichment en los encabezados colapsados.
+- Se mantuvo la compatibilidad del wiring operativo existente: start/stop, target, presets, export y activity log.
+
 
