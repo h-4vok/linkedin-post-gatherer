@@ -99,24 +99,6 @@ Caso detectado:
 - Mantener la popup como una superficie de configuracion y debug, pero mas legible y mas practica para uso repetido.
 - Ajustar estilos y spacing para que la experiencia sea consistente en ventanas chicas sin perder densidad de informacion.
 
-## BL-016: Simplificar la UI inyectada para que sea mas funcional y menos dashboard pesado
-
-La UI inyectada hoy resolvio demasiado dentro de una sola superficie y termino demasiado cargada.
-
-Caso detectado:
-
-- La vista inyectada se siente muy parecida a un dashboard grande, con demasiadas metricas y controles juntos.
-- El resultado es visualmente pesado y poco enfocado para la operacion real.
-- Queremos priorizar funcionalidad util para correr, parar, seguir y entender el proceso, no un panel saturado de widgets.
-
-### Resultado esperado
-
-- Redisenar la UI inyectada con un enfoque mas funcional y menos “dashboard loco”.
-- Reducir ruido visual y concentrar la superficie en controles y estados realmente accionables.
-- Reorganizar metrica, activity, enrichment y AI para que el panel sea mas legible y jerarquico.
-- Mantener lo necesario para operar la corrida, pero recortar o simplificar lo accesorio que hoy ensucia la experiencia.
-- Buscar una interfaz que se sienta mas liviana de escanear en uso real, sin perder capacidad de debug.
-
 ## BL-012: Refactor estructural de `src/content/linkedin/content.js` con single responsibility real
 
 Refactorizar `src/content/linkedin/content.js`, que hoy concentra demasiadas responsabilidades y se volvio un archivo gigante, dificil de mantener, depurar y testear.
