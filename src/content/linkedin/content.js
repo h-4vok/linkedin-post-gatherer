@@ -1870,18 +1870,17 @@
         .harvester-shell {
           position: fixed;
           display: grid;
-          gap: 12px;
+          gap: 10px;
           width: 320px;
           max-height: calc(100vh - 32px);
-          padding: 14px;
+          padding: 12px;
           background: #ffffff;
           color: #111827;
           border: 1px solid rgba(0, 0, 0, 0.08);
           border-radius: 12px;
           box-shadow:
-            0 0 0 1px rgba(0, 0, 0, 0.05),
-            0 10px 15px -3px rgba(0, 0, 0, 0.1),
-            0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            0 0 0 1px rgba(0, 0, 0, 0.04),
+            0 8px 16px rgba(0, 0, 0, 0.12);
           pointer-events: auto;
           font-family:
             -apple-system,
@@ -1901,7 +1900,7 @@
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 12px;
+          gap: 8px;
           cursor: grab;
           user-select: none;
         }
@@ -1917,127 +1916,99 @@
         }
 
         .harvester-eyebrow {
-          margin: 0 0 4px;
-          color: #6b7280;
+          margin: 0;
+          color: #64748b;
           font-size: 10px;
           font-weight: 600;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.05em;
           text-transform: uppercase;
         }
 
         .harvester-title {
-          margin: 0;
-          color: #111827;
-          font-size: 28px;
-          line-height: 0.95;
+          margin: 2px 0 0;
+          color: #0f172a;
+          font-size: 16px;
+          line-height: 1.2;
           font-weight: 700;
-          letter-spacing: -0.04em;
         }
 
         .harvester-status-badge {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          min-height: 28px;
-          padding: 0 10px;
+          gap: 6px;
+          min-height: 26px;
+          padding: 0 8px;
           border-radius: 8px;
-          background: #f3f4f6;
-          color: #374151;
+          background: #f1f5f9;
+          color: #334155;
           font-size: 11px;
           font-weight: 600;
-          letter-spacing: 0.05em;
           text-transform: uppercase;
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          position: relative;
+          border: 1px solid #dbe2ea;
         }
 
         .harvester-status-badge::before {
           content: "";
-          width: 8px;
-          height: 8px;
+          width: 7px;
+          height: 7px;
           border-radius: 999px;
-          background: #9ca3af;
-          box-shadow: none;
+          background: #94a3b8;
           flex: 0 0 auto;
         }
 
         .harvester-status-badge[data-run-state="running"] {
-          background: rgba(0, 102, 255, 0.1);
-          color: #0066ff;
+          background: #e0f2fe;
+          color: #0369a1;
         }
 
         .harvester-status-badge[data-run-state="running"]::before {
           background: #22c55e;
-          box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.42);
-          animation: harvester-status-ping 1.8s ease-out infinite;
         }
 
         .harvester-status-badge[data-run-state="stopping"] {
-          background: rgba(245, 158, 11, 0.12);
-          color: #b45309;
+          background: #fef3c7;
+          color: #92400e;
         }
 
         .harvester-status-badge[data-run-state="completed"] {
-          background: rgba(16, 185, 129, 0.12);
-          color: #047857;
-        }
-
-        .harvester-status-badge[data-run-state="completed"]::before {
-          background: #0066ff;
+          background: #dcfce7;
+          color: #166534;
         }
 
         .harvester-status-badge[data-run-state="unavailable"] {
-          background: rgba(239, 68, 68, 0.1);
-          color: #b91c1c;
-        }
-
-        .harvester-status-badge[data-run-state="unavailable"]::before {
-          background: #9ca3af;
-        }
-
-        @keyframes harvester-status-ping {
-          0% {
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.42);
-          }
-
-          70% {
-            box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
-          }
-
-          100% {
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-          }
+          background: #fee2e2;
+          color: #991b1b;
         }
 
         .harvester-minimize {
-          border: 0;
-          border-radius: 14px;
-          min-width: 28px;
-          height: 28px;
-          background: #f3f4f6;
-          color: #374151;
-          font-size: 18px;
+          border: 1px solid #dbe2ea;
+          border-radius: 8px;
+          min-width: 26px;
+          height: 26px;
+          background: #f8fafc;
+          color: #475569;
+          font-size: 16px;
           line-height: 1;
           font-weight: 600;
           cursor: pointer;
-          border: 1px solid rgba(0, 0, 0, 0.08);
         }
 
         .harvester-body {
           display: grid;
-          gap: 10px;
-          max-height: calc(100vh - 132px);
+          gap: 8px;
+          max-height: calc(100vh - 128px);
           overflow-y: auto;
-          padding-right: 4px;
+          padding-right: 2px;
         }
 
         .harvester-hero,
-        .harvester-activity {
+        .harvester-activity,
+        .harvester-secondary {
           display: grid;
           gap: 6px;
-          padding: 10px 12px;
-          border: 1px solid #e5e7eb;
+          padding: 10px;
+          border: 1px solid #e2e8f0;
           border-radius: 8px;
           background: #ffffff;
         }
@@ -2045,17 +2016,17 @@
         .harvester-hero-label,
         .harvester-activity-label,
         .harvester-metric-label {
-          color: #6b7280;
-          font-size: 11px;
+          color: #64748b;
+          font-size: 10px;
           font-weight: 600;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
         }
 
         .harvester-hero-metric {
           display: flex;
-          align-items: flex-end;
-          gap: 8px;
+          align-items: baseline;
+          gap: 6px;
           line-height: 1;
         }
 
@@ -2077,55 +2048,37 @@
           font-variant-numeric: tabular-nums;
         }
 
-        .harvester-hero-count,
-        .harvester-hero-target {
-          font-weight: 700;
-          letter-spacing: -0.05em;
-        }
-
         .harvester-hero-count {
-          font-size: 44px;
+          font-size: 30px;
+          font-weight: 700;
         }
 
+        .harvester-hero-separator,
         .harvester-hero-target {
-          font-size: 24px;
-          color: #9ca3af;
-          padding-bottom: 4px;
-        }
-
-        .harvester-hero-separator {
-          font-size: 24px;
-          color: #9ca3af;
-          padding-bottom: 4px;
+          font-size: 20px;
+          color: #94a3b8;
         }
 
         .harvester-status {
           margin: 0;
-          color: #4b5563;
-          font-size: 15px;
-          line-height: 1.5;
+          color: #475569;
+          font-size: 12px;
+          line-height: 1.4;
         }
 
-        .harvester-target-row,
-        .harvester-actions,
-        .harvester-presets,
         .harvester-metrics {
           display: grid;
-          gap: 8px;
-        }
-
-        .harvester-presets,
-        .harvester-metrics {
           grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
         }
 
         .harvester-metric-card {
           display: grid;
           gap: 4px;
-          padding: 10px;
+          padding: 8px;
           border-radius: 8px;
-          background: #ffffff;
-          border: 1px solid #e5e7eb;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
         }
 
         .harvester-metric-value,
@@ -2133,37 +2086,26 @@
         .harvester-mode,
         .harvester-wait-count {
           margin: 0;
-          color: #111827;
-          font-size: 18px;
+          color: #0f172a;
+          font-size: 14px;
           line-height: 1.1;
-          letter-spacing: -0.03em;
-          font-weight: 500;
+          font-weight: 600;
         }
 
-        .harvester-preset {
-          border: 0;
-          border-radius: 8px;
-          padding: 10px 14px;
-          background: #f3f4f6;
-          color: #111827;
-          cursor: pointer;
-          font-size: 13px;
-          font-weight: 500;
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          transition:
-            background-color 120ms ease,
-            color 120ms ease,
-            border-color 120ms ease;
+        .harvester-presets,
+        .harvester-actions {
+          display: grid;
+          gap: 6px;
         }
 
-        .harvester-preset.is-active {
-          background: #0066ff;
-          color: #ffffff;
-          border-color: #0066ff;
+        .harvester-presets {
+          grid-template-columns: repeat(3, 1fr);
         }
 
         .harvester-target-row {
-          grid-template-columns: 1fr 112px;
+          display: grid;
+          grid-template-columns: 1fr 110px;
+          gap: 6px;
           align-items: end;
         }
 
@@ -2171,92 +2113,105 @@
           display: grid;
           gap: 4px;
           margin: 0;
-          color: #6b7280;
+          color: #64748b;
           font-size: 10px;
           font-weight: 600;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
         }
 
         .harvester-target {
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid rgba(0, 0, 0, 0.08);
+          border: 1px solid #dbe2ea;
           border-radius: 8px;
-          padding: 8px 14px;
+          padding: 8px 10px;
           min-height: 34px;
           background: #ffffff;
-          color: #111827;
-          font-size: 22px;
+          color: #0f172a;
+          font-size: 18px;
           font-weight: 700;
-          letter-spacing: -0.04em;
         }
 
-        .harvester-button {
-          border: 0;
+        .harvester-button,
+        .harvester-preset {
           border-radius: 8px;
           min-height: 34px;
-          padding: 8px 14px;
+          padding: 7px 10px;
           cursor: pointer;
-          font-size: 13px;
-          font-weight: 500;
-          transition:
-            background-color 120ms ease,
-            color 120ms ease,
-            border-color 120ms ease;
-          border: 1px solid rgba(0, 0, 0, 0.08);
+          font-size: 12px;
+          font-weight: 600;
+          border: 1px solid #dbe2ea;
+          transition: background-color 120ms ease;
         }
 
-        .harvester-start {
-          background: #0066ff;
+        .harvester-preset {
+          background: #f8fafc;
+          color: #334155;
+        }
+
+        .harvester-preset.is-active {
+          background: #2563eb;
           color: #ffffff;
-          border-color: #0066ff;
+          border-color: #2563eb;
         }
 
-        .harvester-stop {
-          background: #f3f4f6;
-          color: #111827;
+        .harvester-actions {
+          grid-template-columns: 1fr 1fr 1fr;
         }
 
+        .harvester-start,
         .harvester-export-enriched {
-          background: #0066ff;
+          background: #2563eb;
           color: #ffffff;
-          border-color: #0066ff;
+          border-color: #2563eb;
         }
 
+        .harvester-stop,
         .harvester-export-raw {
-          background: #f3f4f6;
-          color: #111827;
+          background: #f8fafc;
+          color: #334155;
         }
 
         .harvester-button:disabled,
         .harvester-preset:disabled {
-          opacity: 0.6;
+          opacity: 0.55;
           cursor: not-allowed;
         }
 
-        .harvester-button:not(:disabled):hover,
-        .harvester-preset:not(:disabled):hover,
-        .harvester-minimize:hover {
-          filter: brightness(0.95);
+        .harvester-secondary > summary {
+          list-style: none;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          cursor: pointer;
         }
 
-        .harvester-feedback {
-          color: #43576b;
-          min-height: 20px;
+        .harvester-secondary > summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .harvester-secondary-summary {
+          color: #334155;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .harvester-secondary-content {
+          display: grid;
+          gap: 6px;
         }
 
         .harvester-enrichment-grid,
         .harvester-ai-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px 12px;
-          align-items: center;
+          display: grid;
+          gap: 4px;
         }
 
         .harvester-enrichment-grid strong,
         .harvester-ai-grid strong {
-          color: #111827;
+          color: #0f172a;
           font-size: 12px;
           line-height: 1.3;
           font-weight: 600;
@@ -2264,12 +2219,12 @@
 
         .harvester-enrichment-status,
         .harvester-ai-status {
-          color: #0066ff;
+          color: #2563eb;
         }
 
         .harvester-feedback-copy {
           margin: 0;
-          color: #4b5563;
+          color: #475569;
           font-size: 11px;
           line-height: 1.35;
         }
@@ -2285,20 +2240,16 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 28px;
-          height: 28px;
+          width: 26px;
+          height: 26px;
           padding: 0;
           border-radius: 8px;
-          border: 1px solid #d1d5db;
+          border: 1px solid #dbe2ea;
           background: #ffffff;
-          color: #374151;
-          font-size: 14px;
+          color: #475569;
+          font-size: 13px;
           line-height: 1;
           cursor: pointer;
-        }
-
-        .harvester-activity-copy:hover {
-          background: #f9fafb;
         }
 
         .harvester-activity-log {
@@ -2307,7 +2258,7 @@
           margin: 0;
           padding: 0;
           list-style: none;
-          max-height: 180px;
+          max-height: 190px;
           overflow-y: auto;
         }
 
@@ -2316,10 +2267,10 @@
           grid-template-columns: 6px 1fr;
           align-items: start;
           gap: 6px;
-          color: #1f2937;
+          color: #1e293b;
           font-size: 11px;
           line-height: 1.35;
-          font-weight: 450;
+          font-weight: 500;
         }
 
         .harvester-activity-log li::before {
@@ -2327,9 +2278,15 @@
           width: 6px;
           height: 6px;
           align-self: start;
-          margin-top: calc((1em * 1.5 - 6px) / 2);
+          margin-top: calc((1em * 1.4 - 6px) / 2);
           border-radius: 999px;
-          background: #0066ff;
+          background: #2563eb;
+        }
+
+        .harvester-feedback {
+          color: #475569;
+          min-height: 16px;
+          font-size: 11px;
         }
 
         .harvester-chip {
@@ -2338,45 +2295,32 @@
           justify-content: space-between;
           gap: 8px;
           width: 100%;
-          border: 0;
+          border: 1px solid #dbe2ea;
           border-radius: 8px;
-          padding: 12px 14px;
+          padding: 10px 12px;
           background: #ffffff;
-          color: #111827;
+          color: #0f172a;
           cursor: pointer;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
-          letter-spacing: 0.02em;
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          box-shadow:
-            0 0 0 1px rgba(0, 0, 0, 0.05),
-            0 10px 15px -3px rgba(0, 0, 0, 0.1),
-            0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        }
-
-        .harvester-chip-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
         }
 
         .harvester-chip-label::before {
           content: "";
-          width: 8px;
-          height: 8px;
+          display: inline-block;
+          width: 7px;
+          height: 7px;
           border-radius: 999px;
-          background: #0066ff;
+          margin-right: 6px;
+          background: #2563eb;
         }
 
         .harvester-chip-count {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 28px;
-          padding: 2px 8px;
-          border-radius: 8px;
-          background: #f3f4f6;
-          color: #111827;
+          min-width: 26px;
+          text-align: center;
+          border-radius: 6px;
+          padding: 2px 6px;
+          background: #f1f5f9;
         }
 
         .harvester-shell[data-state="minimized"] .harvester-header,
@@ -2392,7 +2336,7 @@
         <header class="harvester-header" data-drag-handle="true">
           <div>
             <p class="harvester-eyebrow">LinkedIn Intelligence Harvester</p>
-            <h2 class="harvester-title">Harvester Console</h2>
+            <h2 class="harvester-title">Run console</h2>
           </div>
           <div class="harvester-header-actions">
             <span class="harvester-status-badge" data-run-state="idle">Idle</span>
@@ -2441,26 +2385,6 @@
             <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
           </div>
           <section class="harvester-activity">
-            <p class="harvester-activity-label">Enrichment</p>
-            <div class="harvester-enrichment-grid">
-              <strong class="harvester-enrichment-status">Idle</strong>
-              <strong class="harvester-enrichment-posts">Posts 0 / 0</strong>
-              <strong class="harvester-enrichment-authors">Authors 0 / 0</strong>
-            </div>
-            <p class="harvester-feedback-copy">No enrichment in progress.</p>
-          </section>
-          <section class="harvester-activity">
-            <p class="harvester-activity-label">AI Validation</p>
-            <div class="harvester-ai-grid">
-              <strong class="harvester-ai-status">Idle</strong>
-              <strong class="harvester-ai-pending">Pending 0</strong>
-              <strong class="harvester-ai-done">Done 0</strong>
-              <strong class="harvester-ai-results">Interested 0 / Not 0 / Unknown 0</strong>
-            </div>
-            <p class="harvester-ai-copy harvester-feedback-copy">No AI validation running.</p>
-            <p class="harvester-ai-error harvester-feedback-copy">Last error: none</p>
-          </section>
-          <section class="harvester-activity">
             <div class="harvester-activity-header">
               <p class="harvester-activity-label">Activity</p>
               <button
@@ -2476,6 +2400,36 @@
               <li>Waiting for LinkedIn feed...</li>
             </ul>
           </section>
+          <details class="harvester-secondary harvester-enrichment-section">
+            <summary>
+              <span class="harvester-activity-label">Enrichment</span>
+              <span class="harvester-secondary-summary harvester-enrichment-summary">Idle</span>
+            </summary>
+            <div class="harvester-secondary-content">
+              <div class="harvester-enrichment-grid">
+                <strong class="harvester-enrichment-status">Idle</strong>
+                <strong class="harvester-enrichment-posts">Posts 0 / 0</strong>
+                <strong class="harvester-enrichment-authors">Authors 0 / 0</strong>
+              </div>
+              <p class="harvester-feedback-copy harvester-enrichment-copy">No enrichment in progress.</p>
+            </div>
+          </details>
+          <details class="harvester-secondary harvester-ai-section">
+            <summary>
+              <span class="harvester-activity-label">AI validation</span>
+              <span class="harvester-secondary-summary harvester-ai-summary">Idle</span>
+            </summary>
+            <div class="harvester-secondary-content">
+              <div class="harvester-ai-grid">
+                <strong class="harvester-ai-status">Idle</strong>
+                <strong class="harvester-ai-pending">Pending 0</strong>
+                <strong class="harvester-ai-done">Done 0</strong>
+                <strong class="harvester-ai-results">Interested 0 / Not 0 / Unknown 0</strong>
+              </div>
+              <p class="harvester-ai-copy harvester-feedback-copy">No AI validation running.</p>
+              <p class="harvester-ai-error harvester-feedback-copy">Last error: none</p>
+            </div>
+          </details>
           <p class="harvester-feedback" aria-live="polite" hidden></p>
         </div>
         <button class="harvester-chip" type="button" hidden>
@@ -2505,10 +2459,12 @@
       waitCount: shadowRoot.querySelector(".harvester-wait-count"),
       exportRawButton: shadowRoot.querySelector(".harvester-export-raw"),
       exportEnrichedButton: shadowRoot.querySelector(".harvester-export-enriched"),
+      enrichmentSummary: shadowRoot.querySelector(".harvester-enrichment-summary"),
       enrichmentStatus: shadowRoot.querySelector(".harvester-enrichment-status"),
       enrichmentPosts: shadowRoot.querySelector(".harvester-enrichment-posts"),
       enrichmentAuthors: shadowRoot.querySelector(".harvester-enrichment-authors"),
-      enrichmentCopy: shadowRoot.querySelector(".harvester-feedback-copy"),
+      enrichmentCopy: shadowRoot.querySelector(".harvester-enrichment-copy"),
+      aiSummary: shadowRoot.querySelector(".harvester-ai-summary"),
       aiStatus: shadowRoot.querySelector(".harvester-ai-status"),
       aiPending: shadowRoot.querySelector(".harvester-ai-pending"),
       aiDone: shadowRoot.querySelector(".harvester-ai-done"),
@@ -2600,6 +2556,13 @@
     panel.mode.textContent = formatRunState(uiState.runState);
     panel.waitCount.textContent = uiState.stalledWaitCount + " / " + STALLED_WAIT_LIMIT;
     panel.enrichmentStatus.textContent = formatEnrichmentStatus(uiState.enrichment.status);
+    panel.enrichmentSummary.textContent =
+      formatEnrichmentStatus(uiState.enrichment.status) +
+      " - " +
+      uiState.enrichment.processedPosts +
+      "/" +
+      uiState.enrichment.totalPosts +
+      " posts";
     panel.enrichmentPosts.textContent =
       "Posts " + uiState.enrichment.processedPosts + " / " + uiState.enrichment.totalPosts;
     panel.enrichmentAuthors.textContent =
@@ -2607,6 +2570,8 @@
     panel.enrichmentCopy.textContent =
       uiState.enrichment.lastMessage || "No enrichment in progress.";
     panel.aiStatus.textContent = formatAiQueuePhase(uiState.aiQueue.phase);
+    panel.aiSummary.textContent =
+      formatAiQueuePhase(uiState.aiQueue.phase) + " - pending " + (uiState.aiCounts.pending || 0);
     panel.aiPending.textContent = "Pending " + (uiState.aiCounts.pending || 0);
     panel.aiDone.textContent = "Done " + getAiDoneCount();
     panel.aiResults.textContent =
