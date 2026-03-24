@@ -26,59 +26,62 @@
         <div class="activity-header">
           <span class="section-label">Gemini setup</span>
         </div>
-        <label class="checkbox-row">
-          <input id="ai-enabled" type="checkbox" />
-          <span>Enable AI validation</span>
-        </label>
-        <label class="field">
-          <span>API key</span>
-          <input id="ai-api-key" type="password" autocomplete="off" />
-        </label>
-        <label class="field">
-          <span>Model</span>
-          <input id="ai-model" type="text" value="gemini-2.5-flash" />
-        </label>
-        <label class="field field-textarea">
-          <span>System instruction</span>
-          <textarea id="ai-system-instruction" rows="6"></textarea>
-        </label>
-        <button id="save-ai-config" type="button" class="primary-button">Save AI config</button>
+        <div class="field-group">
+          <label class="checkbox-row">
+            <input id="ai-enabled" type="checkbox" />
+            <span>Enable AI validation</span>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>API key</span>
+              <input id="ai-api-key" type="password" placeholder="Paste your API key here" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <input id="ai-model" type="text" value="gemini-2.5-flash" />
+            </label>
+          </div>
+          <label class="field field-textarea">
+            <span>System instruction</span>
+            <textarea id="ai-system-instruction" rows="8" placeholder="Enter custom instructions for the AI..."></textarea>
+          </label>
+          <button id="save-ai-config" type="button" class="primary-button">Save AI configuration</button>
+        </div>
       </section>
 
-      <section class="activity-panel">
-        <div class="activity-header">
-          <span class="section-label">Debug reset</span>
-        </div>
-        <p id="tab-debug-status" class="status-copy">
-          Select a LinkedIn tab to reset captured data for reruns.
-        </p>
-        <button id="reset-debug-data" type="button" class="secondary-button">
-          Reset current tab data
-        </button>
-      </section>
+      <div class="grid-2-sections">
+        <section class="activity-panel">
+          <div class="activity-header">
+            <span class="section-label">Debug reset</span>
+          </div>
+          <p id="tab-debug-status" class="status-copy">
+            Select a LinkedIn tab to reset captured data.
+          </p>
+          <button id="reset-debug-data" type="button" class="secondary-button">
+            Reset tab data
+          </button>
+        </section>
 
-      <section class="activity-panel">
-        <div class="activity-header">
-          <span class="section-label">Debug tools</span>
-        </div>
-        <p class="status-copy">
-          Capture a LinkedIn feed dump or inspect the current export JSON without downloading it.
-        </p>
-        <div class="button-stack">
-          <button id="capture-feed-dump" type="button" class="secondary-button">
-            Capture feed DOM dump
-          </button>
-          <button id="preview-ignored-json" type="button" class="secondary-button">
-            Preview ignored JSON
-          </button>
-          <button id="preview-json-raw" type="button" class="secondary-button">
-            Preview raw JSON
-          </button>
-          <button id="preview-json-enriched" type="button" class="secondary-button">
-            Preview enriched JSON
-          </button>
-        </div>
-      </section>
+        <section class="activity-panel">
+          <div class="activity-header">
+            <span class="section-label">Debug tools</span>
+          </div>
+          <div class="button-stack">
+            <button id="capture-feed-dump" type="button" class="secondary-button">
+              Capture DOM
+            </button>
+            <button id="preview-ignored-json" type="button" class="secondary-button">
+              Ignored JSON
+            </button>
+            <button id="preview-json-raw" type="button" class="secondary-button">
+              Raw JSON
+            </button>
+            <button id="preview-json-enriched" type="button" class="secondary-button">
+              Enriched JSON
+            </button>
+          </div>
+        </section>
+      </div>
 
       <p id="popup-feedback" class="feedback-copy" aria-live="polite"></p>
     </div>
