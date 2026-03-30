@@ -93,6 +93,8 @@ export function createPanelMarkup() {
           <button class="harvester-button harvester-stop" type="button">Stop</button>
           <button class="harvester-button harvester-export-raw" type="button">Export raw</button>
           <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
+          <button class="harvester-button harvester-ai-run" type="button">Run AI validation</button>
+          <button class="harvester-button harvester-ai-cancel" type="button">Cancel AI validation</button>
         </div>
         <div class="harvester-enrichment">
           <p class="harvester-activity-label">Enrichment</p>
@@ -102,6 +104,16 @@ export function createPanelMarkup() {
             <strong class="harvester-enrichment-authors">0 / 0 authors</strong>
           </div>
           <p class="harvester-feedback-copy">No enrichment in progress.</p>
+        </div>
+        <div class="harvester-ai">
+          <p class="harvester-activity-label">AI validation</p>
+          <div class="harvester-ai-grid">
+            <strong class="harvester-ai-status">Idle</strong>
+            <strong class="harvester-ai-pending">Pending 0</strong>
+            <strong class="harvester-ai-done">Progress 0 / 0</strong>
+            <strong class="harvester-ai-results">Interested 0 / Not 0 / Unknown 0</strong>
+          </div>
+          <p class="harvester-ai-copy">No AI validation running.</p>
         </div>
         <div class="harvester-activity">
           <p class="harvester-activity-label">Activity</p>

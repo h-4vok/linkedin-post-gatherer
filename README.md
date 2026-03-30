@@ -8,7 +8,7 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 - Browsers: `Chrome`, `Brave`
 - Stack: `JavaScript` + `Vite`
 - UI: floating control console plus popup backup, with quick target presets, live metrics, and activity log
-- AI validation: optional Gemini AI Studio review from the popup, with free-tier-aware serial processing and fallback states
+- AI validation: optional Gemini AI Studio review from the popup, launched manually as a chunked bulk job with fallback states
 - Debugging: popup previews for feed dumps, raw/enriched exports, and ignored-post samples
 - Product mode: local collection and local export only
 
@@ -32,7 +32,7 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - Offer both `Export raw` for the current batch and `Export enriched` for a sequential author-enrichment pass with visible progress
 - Enrich author metadata with `author_role`, `author_followers`, and `author_weight`
 - Optionally enrich each captured post with `interest_validation` using Gemini AI Studio
-- Keep AI validation resilient under the Google AI Studio free tier by processing one post at a time with backoff on quota/rate pressure
+- Run AI validation manually after capture in fixed chunks, with retry/backoff on quota and rate pressure
 
 ## Expected Workflow
 
@@ -42,7 +42,7 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 4. Press `Start` to begin crawler-driven scrolling and collection.
 5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
 6. Press `Stop` at any time or let the crawler stop automatically at the target.
-7. Optionally configure Gemini in the popup and let the validation queue classify captured posts.
+7. Optionally configure Gemini in the popup and run AI validation for the captured batch once the crawler stops.
 8. Export the current raw batch immediately, or start enriched export and monitor post/author progress until the enriched `JSON` is ready.
 
 ## Standard Commands

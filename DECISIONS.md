@@ -151,7 +151,7 @@ Treat the requirements typo as non-canonical documentation noise and correct it 
 - Tradeoff:
   - The implementation should still note the difference so future readers understand why docs diverge from the original typo.
 
-## ADR-0007: Run Gemini validation asynchronously with free-tier-safe throttling
+## ADR-0007: Run Gemini validation as a manual chunked bulk job
 
 ### Status
 
@@ -163,11 +163,12 @@ The backlog adds a second-stage relevance decision using Gemini AI Studio. This 
 
 ### Decision
 
-Run Gemini validation in the background service worker as an asynchronous post-processing queue:
+Run Gemini validation in the background service worker as a manual post-processing job:
 
-- process one post at a time
-- keep a conservative delay between requests
+- start only when the user explicitly triggers it from the popup
+- process fixed-size chunks of posts per Gemini request
 - retry only transient failures
+- on `429`, read the server-provided retry delay and wait that amount plus `5s`
 - persist `interest_validation` on each post with fallback state `unknown` after retries are exhausted
 - configure the integration from the popup, not from the floating panel
 
@@ -175,7 +176,7 @@ Run Gemini validation in the background service worker as an asynchronous post-p
 
 - Positive:
   - Keeps the crawler responsive and independent from AI latency.
-  - Makes quota handling explicit instead of hiding it behind optimistic parallel calls.
+  - Reduces request pressure by classifying batches instead of posting one request per item.
   - Preserves traceability in exported data even when Gemini is unavailable.
 - Tradeoff:
-  - Some exports will contain a mix of `interested`, `not_interested`, `pending`, and `unknown` under free-tier pressure.
+  - Large batches still need chunk sizing discipline and careful prompt shaping.

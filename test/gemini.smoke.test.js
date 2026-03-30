@@ -5,6 +5,7 @@ import {
   getRetryDelayMs,
   normalizeAiConfig,
   shouldRetryGeminiError,
+  validatePostsInterestBulk,
   validatePostInterest,
 } from "../src/background/gemini.js";
 import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../src/background/default-system-instruction.js";
@@ -118,12 +119,111 @@ describe("gemini validation helpers", () => {
 
   it("calculates conservative retry delays for free-tier quota handling", () => {
     expect(shouldRetryGeminiError({ kind: "rate-limited" }, AI_RATE_LIMIT.maxAttempts)).toBe(false);
-    expect(getRetryDelayMs({ kind: "rate-limited", retryAfterMs: 8000 }, 2)).toBe(16000);
+    expect(getRetryDelayMs({ kind: "rate-limited", retryAfterMs: 8000 }, 2)).toBe(13000);
     expect(getRetryDelayMs({ kind: "quota-exhausted" }, 1)).toBe(AI_RATE_LIMIT.quotaCooldownMs);
     expect(buildValidationResult(AI_STATUS.unknown, 3, "rate-limited")).toMatchObject({
       status: AI_STATUS.unknown,
       attempts: 3,
       error: "rate-limited",
+    });
+  });
+
+  it("parses bulk interested ids and ignores duplicates or unknown ids", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    interested_ids: ["fp-1", "fp-1", "fp-missing", "fp-3"],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const result = await validatePostsInterestBulk(
+      [
+        {
+          fingerprint: "fp-1",
+          author: "Ada",
+          reposted_by: null,
+          posted_time: "4h",
+          type: "organic",
+          post_text: "Post 1",
+        },
+        {
+          fingerprint: "fp-2",
+          author: "Grace",
+          reposted_by: null,
+          posted_time: "5h",
+          type: "organic",
+          post_text: "Post 2",
+        },
+        {
+          fingerprint: "fp-3",
+          author: "Linus",
+          reposted_by: null,
+          posted_time: "6h",
+          type: "organic",
+          post_text: "Post 3",
+        },
+      ],
+      {
+        enabled: true,
+        apiKey: "abc",
+        model: "gemini-2.5-flash",
+        systemInstruction: "Return valid JSON with interested_ids.",
+      },
+      { fetchImpl }
+    );
+
+    expect(result.interestedIds).toEqual(["fp-1", "fp-3"]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid bulk payloads as parse errors", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: '{"wrong_key":["fp-1"]}' }],
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      validatePostsInterestBulk(
+        [
+          {
+            fingerprint: "fp-1",
+            author: "Ada",
+            reposted_by: null,
+            posted_time: "4h",
+            type: "organic",
+            post_text: "Post 1",
+          },
+        ],
+        {
+          enabled: true,
+          apiKey: "abc",
+          model: "gemini-2.5-flash",
+          systemInstruction: "Return valid JSON with interested_ids.",
+        },
+        { fetchImpl }
+      )
+    ).rejects.toMatchObject({
+      kind: "parse-error",
     });
   });
 });

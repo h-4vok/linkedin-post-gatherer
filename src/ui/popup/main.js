@@ -166,7 +166,6 @@ function renderDebugToolState() {
   const canPreviewIgnored = Boolean(activeState?.ignoredSamples?.length);
   const canPreviewEnriched =
     activeState?.enrichment?.status === "completed" && activeState?.enrichment?.readyForDownload;
-
   if (captureFeedDumpButton) {
     captureFeedDumpButton.disabled = !isLinkedIn;
   }

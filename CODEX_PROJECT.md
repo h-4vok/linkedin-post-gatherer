@@ -71,7 +71,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 4. Between scrolls, the collector waits a randomized delay of `1.5s` to `3.5s`.
 5. For each discovered post container, exclusion rules remove promoted posts, polls, and suggested content.
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
-7. Background logic deduplicates and stores intermediate collection state, then optionally validates each new post against Gemini AI Studio using a serial, quota-aware queue.
+7. Background logic deduplicates and stores intermediate collection state, then optionally runs Gemini AI Studio validation as a manual post-capture bulk job in fixed chunks.
 8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`, while the popup also shows AI validation and author-enrichment status.
 9. When requested, export logic produces either a raw `linkedin_dump_[date].json` file or an enriched `linkedin_dump_[date]_enriched.json` file after sequential author enrichment.
 

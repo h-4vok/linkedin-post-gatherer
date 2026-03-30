@@ -13,8 +13,8 @@ flowchart TD
     I --> J[Normalize item shape]
     J --> K[Deduplicate and store locally]
     J --> K2[Capture ignored sample buffer]
-    K --> L[Queue Gemini validation]
-    L --> M[Validate one post at a time]
+    K --> L[User triggers AI validation]
+    L --> M[Send chunked Gemini bulk request]
     M --> N[Persist interest_validation]
     N --> O[Emit AI activity to panel]
     O --> P[Update popup counter]
@@ -42,4 +42,4 @@ flowchart TD
 - Export is local-only in the current phase.
 - Enriched export is sequential and exposes explicit post/author progress while the raw batch remains available immediately.
 - Non-organic feed items are excluded before they enter normalized storage.
-- Gemini validation runs after capture, respects free-tier limits through serial processing, and may leave posts in `pending` or `unknown` when quota pressure or errors occur.
+- Gemini validation runs after capture when the user starts it from the popup, uses fixed-size chunks, and may leave posts in `pending` or `unknown` when quota pressure or errors occur.

@@ -37,6 +37,12 @@ function createEmptyAiQueueState() {
     retryAfterUntil: null,
     lastRequestAt: null,
     lastError: null,
+    totalPosts: 0,
+    processedPosts: 0,
+    totalChunks: 0,
+    completedChunks: 0,
+    currentChunkIndex: 0,
+    lastMessage: null,
   };
 }
 
@@ -257,6 +263,12 @@ export function getPendingValidationItems(tabId) {
   );
 }
 
+export function getAiValidationEligibleItems(tabId) {
+  return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).filter((item) =>
+    [AI_STATUS.pending, AI_STATUS.unknown].includes(item?.interest_validation?.status)
+  );
+}
+
 export function updateInterestValidation(tabId, fingerprint, validationPatch) {
   const tabState = getOrCreateTabState(tabId);
   const currentItem = tabState.itemsByFingerprint.get(fingerprint);
@@ -273,6 +285,30 @@ export function updateInterestValidation(tabId, fingerprint, validationPatch) {
       ...validationPatch,
     },
   });
+
+  return persistState(tabId);
+}
+
+export function updateInterestValidationBatch(tabId, validations = []) {
+  const tabState = getOrCreateTabState(tabId);
+
+  for (const entry of validations) {
+    const fingerprint = entry?.fingerprint;
+    const currentItem = tabState.itemsByFingerprint.get(fingerprint);
+
+    if (!currentItem) {
+      continue;
+    }
+
+    tabState.itemsByFingerprint.set(fingerprint, {
+      ...currentItem,
+      interest_validation: {
+        ...createPendingInterestValidation(),
+        ...currentItem.interest_validation,
+        ...(entry.validationPatch || {}),
+      },
+    });
+  }
 
   return persistState(tabId);
 }

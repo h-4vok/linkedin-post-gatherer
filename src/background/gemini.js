@@ -75,6 +75,33 @@ export async function validatePostInterest(item, config, options = {}) {
   };
 }
 
+export async function validatePostsInterestBulk(items, config, options = {}) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const response = await fetchImpl(
+    `${GEMINI_API_ROOT}/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildGeminiBulkRequest(items, config.systemInstruction)),
+    }
+  );
+
+  if (!response.ok) {
+    throw await buildGeminiError(response);
+  }
+
+  const payload = await response.json();
+  const rawText = extractCandidateText(payload);
+  const interestedIds = parseGeminiBulkDecision(rawText, items.map((item) => item.fingerprint));
+
+  return {
+    interestedIds,
+    rawText,
+  };
+}
+
 export function buildValidationResult(status, attempts, error = null) {
   return {
     status,
@@ -92,7 +119,7 @@ export function getRetryDelayMs(error, attemptNumber) {
 
   if (error?.kind === "rate-limited") {
     const baseDelay = error.retryAfterMs || AI_RATE_LIMIT.defaultBackoffMs;
-    return baseDelay * Math.max(1, attemptNumber);
+    return baseDelay + 5000;
   }
 
   if (error?.kind === "network-error") {
@@ -141,6 +168,44 @@ function buildGeminiRequest(item, systemInstruction) {
   };
 }
 
+function buildGeminiBulkRequest(items, systemInstruction) {
+  return {
+    system_instruction: {
+      parts: [{ text: systemInstruction }],
+    },
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: "application/json",
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: [
+              "Decide which LinkedIn posts are interesting for our profile to comment on.",
+              'Return valid JSON only in this exact shape: {"interested_ids":["fingerprint-1"]}.',
+              "Do not include explanations, markdown, or extra keys.",
+              "If none are interesting, return an empty interested_ids array.",
+              "",
+              JSON.stringify({
+                posts: items.map((item) => ({
+                  fingerprint: item.fingerprint,
+                  author: item.author || "",
+                  reposted_by: item.reposted_by || "",
+                  posted_time: item.posted_time || "",
+                  type: item.type || "",
+                  post_text: item.post_text || "",
+                })),
+              }),
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function parseGeminiDecision(payload) {
   const normalized = extractCandidateText(payload).trim().toLowerCase();
 
@@ -155,6 +220,46 @@ function parseGeminiDecision(payload) {
   const error = new Error(`Unexpected Gemini decision: ${normalized || "<empty>"}`);
   error.kind = "parse-error";
   throw error;
+}
+
+function parseGeminiBulkDecision(rawText, knownIds) {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    const error = new Error(`Unexpected Gemini bulk payload: ${rawText || "<empty>"}`);
+    error.kind = "parse-error";
+    throw error;
+  }
+
+  if (!Array.isArray(parsed?.interested_ids)) {
+    const error = new Error("Gemini bulk response must include interested_ids array.");
+    error.kind = "parse-error";
+    throw error;
+  }
+
+  const knownIdSet = new Set(knownIds);
+  const dedupedIds = [];
+  const seen = new Set();
+
+  for (const value of parsed.interested_ids) {
+    const fingerprint = String(value || "").trim();
+
+    if (!fingerprint || seen.has(fingerprint)) {
+      continue;
+    }
+
+    seen.add(fingerprint);
+
+    if (!knownIdSet.has(fingerprint)) {
+      continue;
+    }
+
+    dedupedIds.push(fingerprint);
+  }
+
+  return dedupedIds;
 }
 
 function extractCandidateText(payload) {

@@ -1,5 +1,59 @@
 # Backlog
 
+## BL-017: Corregir problemas de encoding en `post_text` exportado
+
+Revisar el flujo de extraccion, normalizacion y export porque en una corrida validada aparecieron textos con mojibake, por ejemplo secuencias como `â€”`, `â€œ` o caracteres rotos donde deberian verse comillas, guiones o emojis normales.
+
+Caso detectado:
+
+- El pipeline general parece funcionar bien, pero el `JSON` final contiene corrupcion visual de texto en algunos posts reales.
+- Esto degrada la calidad de la data exportada para lectura humana, analisis posterior y prompts de AI.
+
+### Resultado esperado
+
+- Identificar en que etapa se rompe el encoding:
+  - lectura desde DOM
+  - normalizacion interna
+  - serializacion/export
+- Asegurar que `post_text` preserve correctamente caracteres Unicode reales del feed.
+- Validar el fix con un export real que incluya comillas tipograficas, guiones largos y emojis.
+
+## BL-018: Investigar por que `author_role` queda sistematicamente vacio en el enrichment
+
+Revisar el enriquecimiento de autores porque en una corrida enriquecida y validada `author_role` quedo `null` en todos los items, incluso cuando otros campos del enrichment si se completaron parcialmente.
+
+Caso detectado:
+
+- `author_followers` aparece en algunos autores, pero `author_role` no se completo en ninguno.
+- Eso sugiere que el extractor de perfil para el rol hoy esta roto, demasiado fragil o apuntando a un selector que ya no representa bien el DOM actual.
+
+### Resultado esperado
+
+- Confirmar si el problema esta en:
+  - apertura/carga del perfil
+  - selector del headline/role
+  - normalizacion del valor extraido
+- Restaurar la extraccion de `author_role` cuando el dato exista claramente en el perfil.
+- Dejar cobertura o fixture suficiente para detectar drift futuro.
+
+## BL-019: Revisar el fallback de `author_weight` cuando faltan senales de enrichment
+
+Auditar la logica de clasificacion de `author_weight` porque en una corrida real todos los posts recibieron peso, incluso cuando faltaban `author_role` y `author_followers`, lo que puede estar ocultando demasiada incertidumbre bajo `low`.
+
+Caso detectado:
+
+- El export enriquecido mostro `author_weight` poblado en todos los items.
+- En varios casos ese peso parece derivarse de un fallback por ausencia de datos, no de senales reales suficientes.
+
+### Resultado esperado
+
+- Revisar si conviene mantener `low` como fallback implicito o introducir un estado mas honesto cuando faltan datos.
+- Hacer explicita la regla de negocio para clasificar con:
+  - role conocido
+  - followers conocidos
+  - ambas senales ausentes
+- Alinear la salida final con esa decision para que `author_weight` no transmita falsa precision.
+
 ## BL-002: Categorizacion de "peso" del autor del post
 
 Agregar clasificacion del autor del post para estimar si es un perfil "peso pesado" o no, usando:
