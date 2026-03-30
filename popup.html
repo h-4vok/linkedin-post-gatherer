@@ -34,7 +34,12 @@
           <div class="grid-2">
             <label class="field">
               <span>API key</span>
-              <input id="ai-api-key" type="password" placeholder="Paste your API key here" autocomplete="off" />
+              <input
+                id="ai-api-key"
+                type="password"
+                placeholder="Paste your API key here"
+                autocomplete="off"
+              />
             </label>
             <label class="field">
               <span>Model</span>
@@ -43,9 +48,15 @@
           </div>
           <label class="field field-textarea">
             <span>System instruction</span>
-            <textarea id="ai-system-instruction" rows="8" placeholder="Enter custom instructions for the AI..."></textarea>
+            <textarea
+              id="ai-system-instruction"
+              rows="8"
+              placeholder="Enter custom instructions for the AI..."
+            ></textarea>
           </label>
-          <button id="save-ai-config" type="button" class="primary-button">Save AI configuration</button>
+          <button id="save-ai-config" type="button" class="primary-button">
+            Save AI configuration
+          </button>
         </div>
       </section>
 
@@ -73,9 +84,7 @@
             <button id="preview-ignored-json" type="button" class="secondary-button">
               Ignored JSON
             </button>
-            <button id="preview-json-raw" type="button" class="secondary-button">
-              Raw JSON
-            </button>
+            <button id="preview-json-raw" type="button" class="secondary-button">Raw JSON</button>
             <button id="preview-json-enriched" type="button" class="secondary-button">
               Enriched JSON
             </button>

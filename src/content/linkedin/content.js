@@ -38,9 +38,11 @@
   const TARGET_PRESETS = [25, 50, 100];
   const AI_QUEUE_PHASES = {
     idle: "idle",
-    processing: "processing",
+    running: "running",
     backingOff: "backing-off",
-    disabled: "disabled",
+    completed: "completed",
+    failed: "failed",
+    cancelled: "cancelled",
     configError: "config-error",
   };
   const AI_STATUS = {
@@ -66,6 +68,8 @@
     exportPreviewRequest: "collector/export-preview-request",
     debugIgnoredSamplesRequest: "collector/debug-ignored-samples-request",
     debugFeedDumpRequest: "collector/debug-feed-dump-request",
+    aiValidationStartRequest: "collector/ai-validation-start-request",
+    aiValidationCancelRequest: "collector/ai-validation-cancel-request",
     profileExtractRequest: "collector/profile-extract-request",
     aiActivity: "collector/ai-activity",
   };
@@ -559,6 +563,12 @@
       lastRequestAt: null,
       lastError: null,
       pendingCount: 0,
+      totalPosts: 0,
+      processedPosts: 0,
+      totalChunks: 0,
+      completedChunks: 0,
+      currentChunkIndex: 0,
+      lastMessage: null,
     };
   }
 
@@ -582,11 +592,16 @@
     }
 
     if (
-      nextAiQueue.phase === AI_QUEUE_PHASES.processing &&
-      uiState.aiQueue.phase !== AI_QUEUE_PHASES.processing
+      nextAiQueue.phase === AI_QUEUE_PHASES.running &&
+      (uiState.aiQueue.phase !== AI_QUEUE_PHASES.running ||
+        nextAiQueue.currentChunkIndex !== uiState.aiQueue.currentChunkIndex)
     ) {
       pushActivity(
-        "AI validation running for " + (nextAiQueue.pendingCount || 0) + " pending posts."
+        "AI validation chunk " +
+          (nextAiQueue.currentChunkIndex || 1) +
+          "/" +
+          (nextAiQueue.totalChunks || 1) +
+          " running."
       );
     }
 
@@ -596,8 +611,10 @@
         nextAiQueue.retryAfterUntil !== uiState.aiQueue.retryAfterUntil)
     ) {
       pushActivity(
-        "AI validation backing off after rate limit. Pending: " +
-          (nextAiQueue.pendingCount || 0) +
+        "AI validation backing off before retrying chunk " +
+          (nextAiQueue.currentChunkIndex || 1) +
+          "/" +
+          (nextAiQueue.totalChunks || 1) +
           "."
       );
     }
@@ -611,15 +628,8 @@
     }
 
     if (
-      nextAiQueue.phase === AI_QUEUE_PHASES.disabled &&
-      uiState.aiQueue.phase !== AI_QUEUE_PHASES.disabled
-    ) {
-      pushActivity("AI validation disabled.");
-    }
-
-    if (
-      nextAiQueue.phase === AI_QUEUE_PHASES.idle &&
-      uiState.aiQueue.phase !== AI_QUEUE_PHASES.idle &&
+      nextAiQueue.phase === AI_QUEUE_PHASES.completed &&
+      uiState.aiQueue.phase !== AI_QUEUE_PHASES.completed &&
       (nextAiCounts.pending || 0) === 0
     ) {
       pushActivity(
@@ -642,7 +652,7 @@
     }
 
     if ((nextAiCounts.unknown || 0) > (uiState.aiCounts.unknown || 0)) {
-      pushActivity("AI left 1 post as unknown after retries.");
+      pushActivity("AI marked a chunk as unknown after retries.");
     }
   }
 
@@ -701,12 +711,16 @@
 
   function formatAiQueuePhase(phase) {
     switch (phase) {
-      case AI_QUEUE_PHASES.processing:
-        return "Processing";
+      case AI_QUEUE_PHASES.running:
+        return "Running";
       case AI_QUEUE_PHASES.backingOff:
         return "Backing off";
-      case AI_QUEUE_PHASES.disabled:
-        return "Disabled";
+      case AI_QUEUE_PHASES.completed:
+        return "Completed";
+      case AI_QUEUE_PHASES.failed:
+        return "Failed";
+      case AI_QUEUE_PHASES.cancelled:
+        return "Cancelled";
       case AI_QUEUE_PHASES.configError:
         return "Config error";
       default:
@@ -715,10 +729,6 @@
   }
 
   function formatAiSummary() {
-    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.disabled) {
-      return "AI validation is disabled.";
-    }
-
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.configError) {
       return uiState.aiQueue.lastError || "AI config needs attention.";
     }
@@ -727,8 +737,26 @@
       return "Waiting before retry. " + formatRetryCountdown(uiState.aiQueue.retryAfterUntil);
     }
 
-    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.processing) {
-      return "Validating posts now. Pending: " + (uiState.aiCounts.pending || 0) + ".";
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.running) {
+      return (
+        "Running chunk " +
+        (uiState.aiQueue.currentChunkIndex || 1) +
+        "/" +
+        (uiState.aiQueue.totalChunks || 1) +
+        ". Progress: " +
+        (uiState.aiQueue.processedPosts || 0) +
+        "/" +
+        (uiState.aiQueue.totalPosts || 0) +
+        " posts."
+      );
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.failed) {
+      return uiState.aiQueue.lastMessage || "Last AI validation chunk failed and was marked unknown.";
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.cancelled) {
+      return uiState.aiQueue.lastMessage || "AI validation was cancelled.";
     }
 
     if ((uiState.aiCounts.pending || 0) === 0 && hasAiResults()) {
@@ -2157,18 +2185,20 @@
         }
 
         .harvester-actions {
-          grid-template-columns: 1fr 1fr 1fr;
+          grid-template-columns: 1fr 1fr;
         }
 
         .harvester-start,
-        .harvester-export-enriched {
+        .harvester-export-enriched,
+        .harvester-ai-run {
           background: #2563eb;
           color: #ffffff;
           border-color: #2563eb;
         }
 
         .harvester-stop,
-        .harvester-export-raw {
+        .harvester-export-raw,
+        .harvester-ai-cancel {
           background: #f8fafc;
           color: #334155;
         }
@@ -2383,6 +2413,8 @@
             <button class="harvester-button harvester-stop" type="button">Stop</button>
             <button class="harvester-button harvester-export-raw" type="button">Export raw</button>
             <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
+            <button class="harvester-button harvester-ai-run" type="button">Run AI validation</button>
+            <button class="harvester-button harvester-ai-cancel" type="button">Cancel AI validation</button>
           </div>
           <section class="harvester-activity">
             <div class="harvester-activity-header">
@@ -2423,7 +2455,7 @@
               <div class="harvester-ai-grid">
                 <strong class="harvester-ai-status">Idle</strong>
                 <strong class="harvester-ai-pending">Pending 0</strong>
-                <strong class="harvester-ai-done">Done 0</strong>
+                <strong class="harvester-ai-done">Progress 0 / 0</strong>
                 <strong class="harvester-ai-results">Interested 0 / Not 0 / Unknown 0</strong>
               </div>
               <p class="harvester-ai-copy harvester-feedback-copy">No AI validation running.</p>
@@ -2459,6 +2491,8 @@
       waitCount: shadowRoot.querySelector(".harvester-wait-count"),
       exportRawButton: shadowRoot.querySelector(".harvester-export-raw"),
       exportEnrichedButton: shadowRoot.querySelector(".harvester-export-enriched"),
+      aiRunButton: shadowRoot.querySelector(".harvester-ai-run"),
+      aiCancelButton: shadowRoot.querySelector(".harvester-ai-cancel"),
       enrichmentSummary: shadowRoot.querySelector(".harvester-enrichment-summary"),
       enrichmentStatus: shadowRoot.querySelector(".harvester-enrichment-status"),
       enrichmentPosts: shadowRoot.querySelector(".harvester-enrichment-posts"),
@@ -2510,6 +2544,12 @@
     panel.exportEnrichedButton.addEventListener("click", function () {
       void exportCurrentBatch("enriched");
     });
+    panel.aiRunButton.addEventListener("click", function () {
+      void runAiValidationFromPanel();
+    });
+    panel.aiCancelButton.addEventListener("click", function () {
+      void cancelAiValidationFromPanel();
+    });
     panel.activityCopyButton.addEventListener("click", function () {
       void copyActivityItems();
     });
@@ -2549,7 +2589,10 @@
       uiState.runState === RUN_STATES.stopping ||
       uiState.runState === RUN_STATES.unavailable ||
       uiState.enrichment.status === ENRICHMENT_STATES.running;
+    panel.aiRunButton.disabled = !canRunAiValidation();
+    panel.aiCancelButton.disabled = !isAiValidationRunning();
     panel.exportEnrichedButton.textContent = getEnrichedButtonLabel();
+    panel.aiRunButton.textContent = getAiRunButtonLabel();
     panel.heroCount.textContent = String(uiState.count);
     panel.heroTarget.textContent = String(uiState.targetCount);
     panel.reposts.textContent = String(uiState.repostCount);
@@ -2571,9 +2614,17 @@
       uiState.enrichment.lastMessage || "No enrichment in progress.";
     panel.aiStatus.textContent = formatAiQueuePhase(uiState.aiQueue.phase);
     panel.aiSummary.textContent =
-      formatAiQueuePhase(uiState.aiQueue.phase) + " - pending " + (uiState.aiCounts.pending || 0);
+      formatAiQueuePhase(uiState.aiQueue.phase) +
+      " - chunk " +
+      (uiState.aiQueue.completedChunks || 0) +
+      "/" +
+      (uiState.aiQueue.totalChunks || 0);
     panel.aiPending.textContent = "Pending " + (uiState.aiCounts.pending || 0);
-    panel.aiDone.textContent = "Done " + getAiDoneCount();
+    panel.aiDone.textContent =
+      "Progress " +
+      (uiState.aiQueue.processedPosts || 0) +
+      " / " +
+      (uiState.aiQueue.totalPosts || 0);
     panel.aiResults.textContent =
       "Interested " +
       (uiState.aiCounts.interested || 0) +
@@ -2633,6 +2684,86 @@
       pushActivity(error.message);
     } finally {
       button.disabled = false;
+      renderPanel();
+    }
+  }
+
+  function canRunAiValidation() {
+    const hasEligiblePosts = (uiState.aiCounts.pending || 0) > 0 || (uiState.aiCounts.unknown || 0) > 0;
+
+    return (
+      hasEligiblePosts &&
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping &&
+      !isAiValidationRunning()
+    );
+  }
+
+  function isAiValidationRunning() {
+    return (
+      uiState.aiQueue.phase === AI_QUEUE_PHASES.running ||
+      uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff
+    );
+  }
+
+  function getAiRunButtonLabel() {
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.running) {
+      return "AI running...";
+    }
+
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff) {
+      return "AI backing off...";
+    }
+
+    return "Run AI validation";
+  }
+
+  async function runAiValidationFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.aiRunButton.disabled = true;
+    pushActivity("AI validation requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.aiValidationStartRequest,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to start AI validation.");
+      }
+
+      pushActivity("AI validation started.");
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
+  }
+
+  async function cancelAiValidationFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.aiCancelButton.disabled = true;
+    pushActivity("AI validation cancellation requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.aiValidationCancelRequest,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to cancel AI validation.");
+      }
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
       renderPanel();
     }
   }

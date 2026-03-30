@@ -20,7 +20,8 @@ flowchart LR
     UI -->|raw or enriched export| BG
     UI -->|ignored debug preview| BG
     BG -->|profile extract request| CS
-    BG -->|serial AI validation| GS
+    UI -->|manual AI validation start| BG
+    BG -->|chunked bulk AI validation| GS
     BG --> ST
     BG -->|progress count| UI
     BG -->|AI activity| CS
@@ -33,4 +34,4 @@ flowchart LR
 - Background logic coordinates collection state, deduplication, popup status, AI validation, raw export, and sequential enriched export.
 - The popup is part of the MVP contract, but it should remain thin.
 - Persistence uses `chrome.storage.local` for author cache and lightweight UI preferences, plus tab-scoped session state for active collection data.
-- AI validation is configured from the popup and processed conservatively to fit Google AI Studio free-tier limits.
+- AI validation is configured and triggered from the popup, then processed conservatively in chunks to fit Google AI Studio free-tier limits.

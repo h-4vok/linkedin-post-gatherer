@@ -24,13 +24,15 @@ export const AI_STATUS = {
 };
 export const AI_QUEUE_PHASES = {
   idle: "idle",
-  processing: "processing",
+  running: "running",
   backingOff: "backing-off",
-  disabled: "disabled",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
   configError: "config-error",
 };
 export const AI_RATE_LIMIT = {
-  baseDelayMs: 12000,
+  chunkSize: 10,
   defaultBackoffMs: 30000,
   quotaCooldownMs: 120000,
   maxAttempts: 3,
@@ -80,6 +82,8 @@ export const MESSAGE_TYPES = {
   debugIgnoredSamplesRequest: "collector/debug-ignored-samples-request",
   debugFeedDumpRequest: "collector/debug-feed-dump-request",
   enrichmentCancelRequest: "collector/enrichment-cancel-request",
+  aiValidationStartRequest: "collector/ai-validation-start-request",
+  aiValidationCancelRequest: "collector/ai-validation-cancel-request",
   profileExtractRequest: "collector/profile-extract-request",
   exportResult: "collector/export-result",
   getAiConfig: "collector/get-ai-config",

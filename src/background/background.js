@@ -22,7 +22,7 @@ import {
   getRetryDelayMs,
   saveAiConfig,
   shouldRetryGeminiError,
-  validatePostInterest,
+  validatePostsInterestBulk,
 } from "./gemini.js";
 import {
   applyCrawlerProgress,
@@ -33,8 +33,8 @@ import {
   ensureHydratedState,
   failEnrichment,
   finalizeStopCrawler,
+  getAiValidationEligibleItems,
   getEnrichedItems,
-  getPendingValidationItems,
   getSerializableState,
   markFeedReady,
   mergeNewItems,
@@ -46,11 +46,11 @@ import {
   startEnrichment,
   startCrawler,
   updateEnrichmentProgress,
-  updateInterestValidation,
+  updateInterestValidationBatch,
 } from "../shared/state.js";
 
 const activeEnrichments = new Map();
-const validationWorkers = new Map();
+const activeAiValidationRuns = new Map();
 const AI_RETRY_ALARM_PREFIX = "collector.ai.retry.";
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -80,7 +80,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     tabId,
     alarm: alarm.name,
   });
-  void ensureHydratedState(tabId).then(() => ensureValidationWorker(tabId));
+  void ensureHydratedState(tabId).then(() => ensureAiValidationRun(tabId));
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -119,12 +119,18 @@ async function handleMessage(message, sender) {
 
     case MESSAGE_TYPES.resetDebugRequest: {
       const activeRun = activeEnrichments.get(tabId);
+      const activeAiRun = activeAiValidationRuns.get(tabId);
 
       if (activeRun) {
         activeRun.cancelled = true;
       }
 
+      if (activeAiRun) {
+        activeAiRun.cancelled = true;
+      }
+
       const state = await resetDebugState(tabId);
+      await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
       logServiceWorkerEvent("debug-reset-requested", { tabId });
       await sendCrawlerCommand(tabId, "reset");
       await broadcastCountUpdated(tabId, state);
@@ -214,7 +220,6 @@ async function handleMessage(message, sender) {
         addedCount: mergeResult.addedCount,
         totalCount: state.count,
       });
-      void ensureValidationWorker(tabId);
       await broadcastCountUpdated(tabId, state);
       return { ok: true, addedCount: mergeResult.addedCount, state };
     }
@@ -230,10 +235,86 @@ async function handleMessage(message, sender) {
         enabled: config.enabled,
         model: config.model,
       });
-      if (tabId != null) {
-        void ensureValidationWorker(tabId);
-      }
       return { ok: true, config };
+    }
+
+    case MESSAGE_TYPES.aiValidationStartRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required" };
+      }
+
+      const state = getSerializableState(tabId);
+      const config = await getAiConfig();
+      const configError = getAiConfigError(config);
+
+      if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
+        return { ok: false, error: "Stop the crawler before running AI validation." };
+      }
+
+      if (activeAiValidationRuns.has(tabId)) {
+        return { ok: true, started: false, aiQueue: state.aiQueue };
+      }
+
+      if (configError) {
+        const queueState = await setAiQueueState(tabId, {
+          phase: AI_QUEUE_PHASES.configError,
+          retryAfterUntil: null,
+          lastError: configError,
+          lastMessage: "AI configuration needs attention.",
+        });
+        await broadcastCountUpdated(tabId, queueState);
+        return { ok: false, error: configError, aiQueue: queueState.aiQueue };
+      }
+
+      const eligibleItems = getAiValidationEligibleItems(tabId);
+
+      if (!eligibleItems.length) {
+        return { ok: false, error: "No pending or unknown posts available for AI validation." };
+      }
+
+      const totalChunks = Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize);
+      const startedState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.running,
+        retryAfterUntil: null,
+        lastError: null,
+        lastRequestAt: null,
+        totalPosts: eligibleItems.length,
+        processedPosts: 0,
+        totalChunks,
+        completedChunks: 0,
+        currentChunkIndex: 1,
+        lastMessage: "Starting AI validation bulk run.",
+      });
+      await broadcastAiActivity(
+        tabId,
+        `AI validation started for ${eligibleItems.length} posts in ${totalChunks} chunks.`
+      );
+      await broadcastCountUpdated(tabId, startedState);
+      void ensureAiValidationRun(tabId);
+      return { ok: true, started: true, aiQueue: startedState.aiQueue };
+    }
+
+    case MESSAGE_TYPES.aiValidationCancelRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required" };
+      }
+
+      const activeRun = activeAiValidationRuns.get(tabId);
+
+      if (!activeRun) {
+        return { ok: true, state: getSerializableState(tabId) };
+      }
+
+      activeRun.cancelled = true;
+      const state = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.cancelled,
+        retryAfterUntil: null,
+        lastError: null,
+        lastMessage: "AI validation cancellation requested.",
+      });
+      await broadcastAiActivity(tabId, "AI validation cancellation requested.");
+      await broadcastCountUpdated(tabId, state);
+      return { ok: true, state };
     }
 
     case MESSAGE_TYPES.crawlerProgress: {
@@ -554,41 +635,69 @@ function logServiceWorkerEvent(event, payload = {}) {
   console.log("[harvester][service-worker]", event, payload);
 }
 
-function ensureValidationWorker(tabId) {
-  if (validationWorkers.has(tabId)) {
-    return validationWorkers.get(tabId);
+function ensureAiValidationRun(tabId) {
+  if (activeAiValidationRuns.has(tabId)) {
+    return activeAiValidationRuns.get(tabId).promise;
   }
 
-  const worker = runValidationWorker(tabId).finally(() => {
-    validationWorkers.delete(tabId);
+  const run = {
+    cancelled: false,
+    promise: null,
+  };
+  run.promise = runAiValidation(tabId, run).finally(() => {
+    activeAiValidationRuns.delete(tabId);
   });
-  validationWorkers.set(tabId, worker);
-  return worker;
+  activeAiValidationRuns.set(tabId, run);
+  return run.promise;
 }
 
-async function runValidationWorker(tabId) {
-  while (true) {
-    const pendingItems = getPendingValidationItems(tabId);
+async function runAiValidation(tabId, run) {
+  const initialState = getSerializableState(tabId);
 
-    if (!pendingItems.length) {
-      const idleState = await setAiQueueState(tabId, {
-        phase: AI_QUEUE_PHASES.idle,
+  if (initialState.aiQueue?.phase === AI_QUEUE_PHASES.cancelled) {
+    return;
+  }
+
+  while (true) {
+    if (run.cancelled) {
+      const cancelledState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.cancelled,
         retryAfterUntil: null,
         lastError: null,
+        lastMessage: "AI validation cancelled.",
       });
-      await broadcastCountUpdated(tabId, idleState);
+      await broadcastAiActivity(tabId, "AI validation cancelled.");
+      await broadcastCountUpdated(tabId, cancelledState);
       return;
     }
 
-    const item = pendingItems[0];
+    const eligibleItems = getAiValidationEligibleItems(tabId);
+
+    if (!eligibleItems.length) {
+      const completedState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.completed,
+        retryAfterUntil: null,
+        lastError: null,
+        currentChunkIndex: 0,
+        lastMessage: "AI validation completed for the current batch.",
+      });
+      await broadcastAiActivity(
+        tabId,
+        `AI validation completed. interested: ${completedState.aiCounts.interested}, not_interested: ${completedState.aiCounts.not_interested}, unknown: ${completedState.aiCounts.unknown}.`
+      );
+      await broadcastCountUpdated(tabId, completedState);
+      return;
+    }
+
     const config = await getAiConfig();
     const configError = getAiConfigError(config);
 
     if (configError) {
       const queueState = await setAiQueueState(tabId, {
-        phase: config.enabled ? AI_QUEUE_PHASES.configError : AI_QUEUE_PHASES.disabled,
+        phase: AI_QUEUE_PHASES.configError,
         retryAfterUntil: null,
         lastError: configError,
+        lastMessage: "AI configuration needs attention.",
       });
       await broadcastCountUpdated(tabId, queueState);
       return;
@@ -596,102 +705,151 @@ async function runValidationWorker(tabId) {
 
     await pauseForRateLimit(tabId);
 
+    const chunk = eligibleItems.slice(0, AI_RATE_LIMIT.chunkSize);
+    const stateBeforeChunk = getSerializableState(tabId);
+    const currentChunkIndex = Math.min(
+      (stateBeforeChunk.aiQueue?.completedChunks || 0) + 1,
+      Math.max(1, stateBeforeChunk.aiQueue?.totalChunks || Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize))
+    );
     const processingState = await setAiQueueState(tabId, {
-      phase: AI_QUEUE_PHASES.processing,
+      phase: AI_QUEUE_PHASES.running,
       retryAfterUntil: null,
       lastError: null,
       lastRequestAt: new Date().toISOString(),
+      currentChunkIndex,
+      lastMessage: `Running AI validation chunk ${currentChunkIndex}/${stateBeforeChunk.aiQueue?.totalChunks || 1}.`,
     });
     await broadcastCountUpdated(tabId, processingState);
-
-    const attempts = Number(item.interest_validation?.attempts || 0) + 1;
-    logServiceWorkerEvent("ai-validation-started", {
-      tabId,
-      fingerprint: item.fingerprint,
-      attempts,
-      pendingCount: pendingItems.length,
-      model: config.model,
-      apiKeyPresent: Boolean(config.apiKey),
-      apiKeyLength: config.apiKey?.length || 0,
-    });
     await broadcastAiActivity(
       tabId,
-      `AI validation running for ${pendingItems.length} pending posts.`
+      `AI validation chunk ${currentChunkIndex}/${processingState.aiQueue.totalChunks} running for ${chunk.length} posts.`
     );
 
+    const attempts = Math.max(
+      ...chunk.map((item) => Number(item.interest_validation?.attempts || 0)),
+      0
+    ) + 1;
+    logServiceWorkerEvent("ai-validation-chunk-started", {
+      tabId,
+      chunkIndex: currentChunkIndex,
+      attempts,
+      chunkSize: chunk.length,
+      remainingEligible: eligibleItems.length,
+    });
+
     try {
-      const result = await validatePostInterest(item, config);
-      const updatedState = await updateInterestValidation(
+      const result = await validatePostsInterestBulk(chunk, config);
+      const interestedIds = new Set(result.interestedIds);
+      const updatedState = await updateInterestValidationBatch(
         tabId,
-        item.fingerprint,
-        buildValidationResult(result.status, attempts, null)
+        chunk.map((item) => ({
+          fingerprint: item.fingerprint,
+          validationPatch: buildValidationResult(
+            interestedIds.has(item.fingerprint) ? AI_STATUS.interested : AI_STATUS.notInterested,
+            attempts,
+            null
+          ),
+        }))
       );
-      await setAiQueueState(tabId, {
-        phase: AI_QUEUE_PHASES.processing,
+      const progressedState = await setAiQueueState(tabId, {
+        phase: AI_QUEUE_PHASES.running,
         retryAfterUntil: null,
         lastError: null,
         lastRequestAt: new Date().toISOString(),
+        processedPosts: Math.min(
+          updatedState.aiQueue.totalPosts,
+          (updatedState.aiQueue.processedPosts || 0) + chunk.length
+        ),
+        completedChunks: Math.min(
+          updatedState.aiQueue.totalChunks,
+          (updatedState.aiQueue.completedChunks || 0) + 1
+        ),
+        currentChunkIndex: Math.min(
+          updatedState.aiQueue.totalChunks,
+          (updatedState.aiQueue.completedChunks || 0) + 2
+        ),
+        lastMessage: `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} completed.`,
       });
-      logServiceWorkerEvent("ai-validation-completed", {
+      const interestedCount = chunk.filter((item) => interestedIds.has(item.fingerprint)).length;
+      logServiceWorkerEvent("ai-validation-chunk-completed", {
         tabId,
-        fingerprint: item.fingerprint,
-        decision: result.status,
+        chunkIndex: currentChunkIndex,
         attempts,
-        pendingCount: Math.max(0, pendingItems.length - 1),
+        chunkSize: chunk.length,
+        interestedCount,
       });
       await broadcastAiActivity(
         tabId,
-        result.status === AI_STATUS.interested
-          ? "AI marked 1 post as interested."
-          : "AI marked 1 post as not_interested."
+        `AI validation chunk ${currentChunkIndex}/${progressedState.aiQueue.totalChunks} completed. Interested: ${interestedCount}/${chunk.length}.`
       );
-      await broadcastCountUpdated(tabId, updatedState);
-      logServiceWorkerEvent("ai-validation-idle-delay", {
-        tabId,
-        delayMs: AI_RATE_LIMIT.baseDelayMs,
-      });
-      await delay(AI_RATE_LIMIT.baseDelayMs);
+      await broadcastCountUpdated(tabId, progressedState);
     } catch (error) {
       const normalizedError = normalizeAiError(error);
       const shouldRetry = shouldRetryGeminiError(normalizedError, attempts);
 
       if (!shouldRetry) {
-        const updatedState = await updateInterestValidation(
+        const updatedState = await updateInterestValidationBatch(
           tabId,
-          item.fingerprint,
-          buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind)
+          chunk.map((item) => ({
+            fingerprint: item.fingerprint,
+            validationPatch: buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind),
+          }))
         );
-        const queueState = await setAiQueueState(tabId, {
-          phase: AI_QUEUE_PHASES.idle,
+        const failedState = await setAiQueueState(tabId, {
+          phase: AI_QUEUE_PHASES.failed,
           retryAfterUntil: null,
           lastError: normalizedError.message,
+          processedPosts: Math.min(
+            updatedState.aiQueue.totalPosts,
+            (updatedState.aiQueue.processedPosts || 0) + chunk.length
+          ),
+          completedChunks: Math.min(
+            updatedState.aiQueue.totalChunks,
+            (updatedState.aiQueue.completedChunks || 0) + 1
+          ),
+          currentChunkIndex: Math.min(
+            updatedState.aiQueue.totalChunks,
+            (updatedState.aiQueue.completedChunks || 0) + 2
+          ),
+          lastMessage: `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} failed and was marked unknown.`,
         });
-        logServiceWorkerEvent("ai-validation-failed", {
+        logServiceWorkerEvent("ai-validation-chunk-failed", {
           tabId,
-          fingerprint: item.fingerprint,
+          chunkIndex: currentChunkIndex,
           kind: normalizedError.kind,
           attempts,
           message: normalizedError.message,
         });
-        await broadcastAiActivity(tabId, "AI left 1 post as unknown after retries.");
-        await broadcastCountUpdated(tabId, queueState || updatedState);
+        await broadcastAiActivity(
+          tabId,
+          `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} failed. ${chunk.length} posts marked unknown.`
+        );
+        await broadcastCountUpdated(tabId, failedState);
         continue;
       }
 
       const retryDelayMs = getRetryDelayMs(normalizedError, attempts);
       const retryUntil = new Date(Date.now() + retryDelayMs).toISOString();
-      await updateInterestValidation(tabId, item.fingerprint, {
-        attempts,
-        error: normalizedError.kind,
-      });
+      await updateInterestValidationBatch(
+        tabId,
+        chunk.map((item) => ({
+          fingerprint: item.fingerprint,
+          validationPatch: {
+            attempts,
+            error: normalizedError.kind,
+          },
+        }))
+      );
       const queueState = await setAiQueueState(tabId, {
         phase: AI_QUEUE_PHASES.backingOff,
         retryAfterUntil: retryUntil,
         lastError: normalizedError.message,
+        currentChunkIndex,
+        lastMessage: `Backing off before retrying chunk ${currentChunkIndex}.`,
       });
-      logServiceWorkerEvent("ai-validation-backoff", {
+      logServiceWorkerEvent("ai-validation-chunk-backoff", {
         tabId,
-        fingerprint: item.fingerprint,
+        chunkIndex: currentChunkIndex,
         kind: normalizedError.kind,
         attempts,
         retryDelayMs,
@@ -700,7 +858,7 @@ async function runValidationWorker(tabId) {
       });
       await broadcastAiActivity(
         tabId,
-        `AI validation backing off after rate limit. Pending: ${pendingItems.length}.`
+        `AI validation backing off before retrying chunk ${currentChunkIndex}/${queueState.aiQueue.totalChunks}.`
       );
       await broadcastCountUpdated(tabId, queueState);
       await scheduleValidationRetryAlarm(tabId, retryDelayMs);
@@ -727,6 +885,10 @@ async function pauseForRateLimit(tabId) {
     });
     await delay(waitMs);
   }
+
+  await setAiQueueState(tabId, {
+    retryAfterUntil: null,
+  });
 }
 
 async function runEnrichment(tabId) {
