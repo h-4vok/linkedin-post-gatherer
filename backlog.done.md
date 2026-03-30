@@ -27,7 +27,6 @@ Revisar y restaurar la extraccion del link canonico del post en el flujo normali
 - Se elimino el patron alternado de exito/fallo causado por el cierre del menu via toggle del mismo overflow button.
 - Se agrego y actualizo cobertura de tests para proteger el comportamiento del extractor.
 
-
 ## BL-005: Normalizar formatter/linter en package.json y rules of engagement
 
 Estado: terminado.
@@ -75,6 +74,7 @@ Agregar visibilidad en el activity log cuando la validacion con AI esta habilita
 - Se registraron eventos relevantes del flujo de AI validation en el activity log del panel.
 - Se cubrieron inicio de procesamiento, decisions, backoff por rate limit, fallback a `unknown` y fin de corrida.
 - Se mantuvieron los logs tecnicos del service worker como respaldo, pero el panel paso a ser la fuente humana principal de trazabilidad.
+
 ## BL-010: Captura manual del DOM del feed desde el popup para regenerar fixtures de debugging
 
 Estado: terminado.
