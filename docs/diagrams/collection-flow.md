@@ -22,7 +22,7 @@ flowchart TD
     Q -->|No| C
     Q -->|Yes| R{Export mode}
     R -->|Raw| S[Build raw JSON payload]
-    S --> T[Download linkedin_dump_[date].json]
+S --> T["Download linkedin_dump_[date].json"]
     R -->|Ignored debug| U[Build ignored-samples JSON preview]
     U --> V[Copy or inspect in popup]
     R -->|Enriched| W[Resolve unique authors]
@@ -32,7 +32,7 @@ flowchart TD
     Z --> AA[Classify author weight]
     AA --> AB[Update enrichment progress]
     AB --> AC[Build enriched JSON payload]
-    AC --> AD[Download linkedin_dump_[date]_enriched.json]
+AC --> AD["Download linkedin_dump_[date]_enriched.json"]
 ```
 
 ## Notes
