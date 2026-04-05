@@ -15,6 +15,11 @@ Then use existing repo docs as needed:
 - `DECISIONS.md` for ADRs
 - `docs/diagrams/` for current operational diagrams
 
+## Local Skills
+
+- `product-manager`: `/.agents/skills/product-manager/SKILL.md` for requirement discovery/refinement. Interview the user, work through GitHub Issues directly, and finish by labeling the issue `pm-done`.
+- `tech-lead`: `/.agents/skills/tech-lead/SKILL.md` for technical planning after product scope is clear.
+
 ## Working Expectations
 
 - Treat `ENGINEERING_PLAYBOOK.md` as reusable policy.
