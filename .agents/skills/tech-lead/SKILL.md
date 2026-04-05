@@ -18,7 +18,7 @@ El desarrollador que ejecutará este plan no tiene contexto. Tu plan debe ser un
 
 ## 📝 ENTREGABLE FINAL (GitHub Issue)
 
-Una vez finalizado el análisis y el plan, TU ÚLTIMA ACCIÓN DEBE SER crear un GitHub Issue.
+Una vez finalizado el análisis y el plan, TU ÚLTIMA ACCIÓN DEBE SER actualizar el GitHub Issue en cuestión (si hay uno de referencia) o crearlo.
 Usa la terminal para ejecutar el CLI de GitHub (`gh`) y subir el plan.
 
 Estructura obligatoria del cuerpo del Issue:
@@ -27,5 +27,7 @@ Estructura obligatoria del cuerpo del Issue:
 2. **[Archivos Afectados]** Lista con rutas exactas (ej. `packages/web-player/src/lib/diagram-minimap.ts`).
 3. **[Paso a Paso de Ejecución]** Instrucciones técnicas detalladas, ordenadas lógicamente.
 4. **[Guardrails]** Qué tests específicos o comandos de linting debe correr el desarrollador al terminar.
+
+Si el issue ya existe, agrega esta definición debajo de la descripción del issue actual, dentro de una sección # Definición Técnica
 
 _Comando esperado al finalizar:_ `gh issue create --title "[Arquitectura] Título de la tarea" --body "Cuerpo del plan..."` (o guardarlo en un archivo temporal `.md` y subirlo con `--body-file`).
