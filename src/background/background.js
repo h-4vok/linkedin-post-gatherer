@@ -709,7 +709,11 @@ async function runAiValidation(tabId, run) {
     const stateBeforeChunk = getSerializableState(tabId);
     const currentChunkIndex = Math.min(
       (stateBeforeChunk.aiQueue?.completedChunks || 0) + 1,
-      Math.max(1, stateBeforeChunk.aiQueue?.totalChunks || Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize))
+      Math.max(
+        1,
+        stateBeforeChunk.aiQueue?.totalChunks ||
+          Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize)
+      )
     );
     const processingState = await setAiQueueState(tabId, {
       phase: AI_QUEUE_PHASES.running,
@@ -725,10 +729,8 @@ async function runAiValidation(tabId, run) {
       `AI validation chunk ${currentChunkIndex}/${processingState.aiQueue.totalChunks} running for ${chunk.length} posts.`
     );
 
-    const attempts = Math.max(
-      ...chunk.map((item) => Number(item.interest_validation?.attempts || 0)),
-      0
-    ) + 1;
+    const attempts =
+      Math.max(...chunk.map((item) => Number(item.interest_validation?.attempts || 0)), 0) + 1;
     logServiceWorkerEvent("ai-validation-chunk-started", {
       tabId,
       chunkIndex: currentChunkIndex,
@@ -792,7 +794,11 @@ async function runAiValidation(tabId, run) {
           tabId,
           chunk.map((item) => ({
             fingerprint: item.fingerprint,
-            validationPatch: buildValidationResult(AI_STATUS.unknown, attempts, normalizedError.kind),
+            validationPatch: buildValidationResult(
+              AI_STATUS.unknown,
+              attempts,
+              normalizedError.kind
+            ),
           }))
         );
         const failedState = await setAiQueueState(tabId, {
@@ -1117,7 +1123,7 @@ function waitForTabLoad(tabId) {
 }
 
 async function downloadJsonExport({ items, filename }) {
-  const json = JSON.stringify(items, null, 2);
+  const json = serializeExportItems(items);
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
   const downloadId = await chrome.downloads.download({
     url: dataUrl,

@@ -7,23 +7,33 @@ const POSTED_TIME_PATTERN = /^(now|\d+\s*(?:s|m|h|d|w|mo|y))\b/i;
 const OVERFLOW_BUTTON_SELECTOR = 'button[aria-label*="Open control menu for post"]';
 const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
 const MENU_ITEM_SELECTOR = '[role="menuitem"]';
+const POST_TEXT_BLOCK_TAGS = new Set(["P", "DIV", "LI"]);
 
-function normalizeWhitespace(value) {
-  return value.replace(/\s+/g, " ").trim();
+export function normalizeWhitespace(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function stripExpandableSuffix(text) {
+export function stripExpandableSuffix(text) {
+  if (!text) {
+    return "";
+  }
+
   return text
-    .replace(/(?:…|\.{3})\s*more\s*$/i, " ")
-    .replace(/\s+/g, " ")
+    .replace(/(?:\u2026|\.{3})[^\S\n]*more[^\S\n]*$/iu, "")
+    .replace(/[^\S\n]+\n/g, "\n")
+    .replace(/\n[^\S\n]+/g, "\n")
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function cleanPersonLabel(text) {
+export function cleanPersonLabel(text) {
   if (!text) {
     return null;
   }
@@ -38,6 +48,8 @@ function cleanPersonLabel(text) {
   cleaned = cleaned.replace(/[•·]+/g, " ");
   cleaned = cleaned.replace(/â€¢|Ã¢â‚¬Â¢|Ã‚Â·/g, " ");
   cleaned = cleaned.replace(/\s+[•·]+\s*$/g, " ");
+  cleaned = cleaned.replace(/[\u2022\u00B7]+/g, " ");
+  cleaned = cleaned.replace(/\s+[\u2022\u00B7]+\s*$/g, " ");
   cleaned = normalizeWhitespace(cleaned);
 
   return cleaned || null;
@@ -110,11 +122,20 @@ function removeRelationshipMarker(text) {
   let hadMarker = false;
 
   for (const marker of RELATIONSHIP_MARKERS) {
+    const canonicalMarkerPattern = new RegExp(
+      `\\s*[\\u2022\\-\\u00B7]?\\s*${escapeRegExp(marker)}(?:\\s|$)`,
+      "gi"
+    );
     const markerPattern = new RegExp(`\\s*[•\\-·]?\\s*${escapeRegExp(marker)}(?:\\s|$)`, "gi");
 
     if (markerPattern.test(cleaned)) {
       hadMarker = true;
       cleaned = cleaned.replace(markerPattern, " ");
+    }
+
+    if (canonicalMarkerPattern.test(cleaned)) {
+      hadMarker = true;
+      cleaned = cleaned.replace(canonicalMarkerPattern, " ");
     }
   }
 
@@ -332,15 +353,66 @@ export function extractRepostMetadata(postElement, author = null) {
   };
 }
 
-export function extractPostText(postElement) {
-  const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
+function appendPostTextNode(node, fragments) {
+  if (!node) {
+    return;
+  }
 
+  if (node.nodeType === 3) {
+    fragments.push((node.textContent || "").replace(/\u00A0/g, " "));
+    return;
+  }
+
+  if (node.nodeType !== 1) {
+    return;
+  }
+
+  const element = node;
+
+  if (element.tagName === "BUTTON") {
+    return;
+  }
+
+  if (element.tagName === "BR") {
+    fragments.push("\n");
+    return;
+  }
+
+  for (const childNode of element.childNodes) {
+    appendPostTextNode(childNode, fragments);
+  }
+
+  if (POST_TEXT_BLOCK_TAGS.has(element.tagName)) {
+    fragments.push("\n\n");
+  }
+}
+
+function normalizePostTextWithBreaks(text) {
+  return String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+export function extractPostTextWithBreaks(textBox) {
   if (!textBox) {
     return null;
   }
 
-  const text = stripExpandableSuffix(textBox.textContent || "");
+  const fragments = [];
+
+  for (const childNode of textBox.childNodes) {
+    appendPostTextNode(childNode, fragments);
+  }
+
+  const text = stripExpandableSuffix(normalizePostTextWithBreaks(fragments.join("")));
   return text || null;
+}
+
+export function extractPostText(postElement) {
+  const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
+  return extractPostTextWithBreaks(textBox);
 }
 
 export function extractPostedTime(postElement) {

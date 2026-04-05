@@ -94,7 +94,10 @@ export async function validatePostsInterestBulk(items, config, options = {}) {
 
   const payload = await response.json();
   const rawText = extractCandidateText(payload);
-  const interestedIds = parseGeminiBulkDecision(rawText, items.map((item) => item.fingerprint));
+  const interestedIds = parseGeminiBulkDecision(
+    rawText,
+    items.map((item) => item.fingerprint)
+  );
 
   return {
     interestedIds,

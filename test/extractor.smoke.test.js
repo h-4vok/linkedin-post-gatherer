@@ -7,6 +7,7 @@ import {
   extractAuthorProfileUrl,
   extractPostedTime,
   extractPostText,
+  extractPostTextWithBreaks,
   extractRepostMetadata,
   findCopyLinkMenuItem,
   findFeedContainer,
@@ -23,6 +24,9 @@ import { getSerializableState, mergeNewItems } from "../src/shared/state.js";
 const REAL_FEED_FIXTURE = JSON.parse(
   readFileSync("test/fixtures/linkedin-feedcurrent-2026-03-23.json", "utf8")
 );
+const UNICODE_POST_FIXTURE = readFileSync("test/fixtures/post-text-unicode.html", "utf8");
+const EXPECTED_UNICODE_POST_TEXT =
+  "\u201CHola\u201D \u2014 lanzamiento \u{1F680}\n\nL\u00ednea con emoji \u{1F600}\nSegunda l\u00ednea unida\n\nBloque final con acento: p\u00e1rrafo";
 
 const FEED_FIXTURE = `
   <div componentkey="container-update-list_mainFeed-lazy-container">
@@ -181,6 +185,12 @@ function setupRealFeedPost(postIndex) {
   }).window.document.querySelector('div[role="listitem"]');
 }
 
+function setupUnicodePostDocument() {
+  return new JSDOM(UNICODE_POST_FIXTURE, {
+    url: "https://www.linkedin.com/feed/",
+  }).window.document;
+}
+
 describe("LinkedIn feed smoke extraction", () => {
   it("finds the feed container and list items", () => {
     const document = setupDocument();
@@ -273,6 +283,33 @@ describe("LinkedIn feed smoke extraction", () => {
 
     expect(extractPostText(posts[0])).toBe("Full organic text with a hidden ending.");
     expect(extractPostText(posts[2])).toBeNull();
+  });
+
+  it("preserves unicode characters and paragraph breaks in post text", () => {
+    const document = setupUnicodePostDocument();
+    const post = document.querySelector('[data-post-id="unicode-post"]');
+    const textBox = post.querySelector('[data-testid="expandable-text-box"]');
+
+    expect(extractPostTextWithBreaks(textBox)).toBe(EXPECTED_UNICODE_POST_TEXT);
+    expect(extractPostText(post)).toBe(EXPECTED_UNICODE_POST_TEXT);
+  });
+
+  it("returns null when the expandable text box has no useful text", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <span data-testid="expandable-text-box">
+            <button type="button">&#8230; more</button>
+            &nbsp;
+          </span>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostText(document.querySelector('[role="listitem"]'))).toBeNull();
   });
 
   it("extracts posted time when LinkedIn exposes a relative timestamp", () => {
