@@ -13,26 +13,26 @@ flowchart TD
     I --> J[Normalize item shape]
     J --> K[Deduplicate and store locally]
     J --> K2[Capture ignored sample buffer]
-    K --> L[User triggers AI validation]
-    L --> M[Send chunked Gemini bulk request]
-    M --> N[Persist interest_validation]
-    N --> O[Emit AI activity to panel]
-    O --> P[Update popup counter]
-    P --> Q{Limit reached?}
-    Q -->|No| C
-    Q -->|Yes| R{Export mode}
-    R -->|Raw| S[Build raw JSON payload]
-S --> T["Download linkedin_dump_[date].json"]
-    R -->|Ignored debug| U[Build ignored-samples JSON preview]
-    U --> V[Copy or inspect in popup]
-    R -->|Enriched| W[Resolve unique authors]
-    W --> X[Reuse local author cache]
-    X --> Y[Open one LinkedIn profile tab at a time]
-    Y --> Z[Extract role and followers]
-    Z --> AA[Classify author weight]
-    AA --> AB[Update enrichment progress]
-    AB --> AC[Build enriched JSON payload]
-AC --> AD["Download linkedin_dump_[date]_enriched.json"]
+    K --> L{Optional manual pass}
+    L -->|Run enrichment| M[Resolve unique authors]
+    M --> N[Reuse local author cache]
+    N --> O[Open one LinkedIn profile tab at a time]
+    O --> P[Extract role and followers]
+    P --> Q[Classify author weight]
+    Q --> R[Persist enrichment snapshot]
+    K --> S[User triggers AI validation]
+    R --> S
+    S --> T[Reset items to pending and send chunked Gemini bulk request]
+    T --> U[Persist interest_validation]
+    U --> V[Emit AI activity to panel]
+    V --> W[Update popup counter]
+    W --> X{Limit reached?}
+    X -->|No| C
+    X -->|Yes| Y{Debug preview or download}
+    Y -->|Download result| Z[Compose latest snapshot]
+    Z --> AA["Download linkedin_crawl_result_[yyyymmdd-hhmmss].json"]
+    Y -->|Ignored debug| AB[Build ignored-samples JSON preview]
+    AB --> AC[Copy or inspect in popup]
 ```
 
 ## Notes
@@ -40,6 +40,8 @@ AC --> AD["Download linkedin_dump_[date]_enriched.json"]
 - Collection should be resumable and should not duplicate previously captured posts.
 - Failures in extraction should be observable and should not corrupt stored results.
 - Export is local-only in the current phase.
-- Enriched export is sequential and exposes explicit post/author progress while the raw batch remains available immediately.
+- The LinkedIn panel downloads the latest stable result snapshot and disables download while the crawler, enrichment, or AI validation is running.
+- Author enrichment is sequential, preserves partial progress on cancellation, and the latest download composes that snapshot with the latest AI validation overlay.
+- Enriched author classification may end in `trivial` when enrichment cannot find followers or a strong enough role signal; `low` is reserved for authors with real but weak follower evidence.
 - Non-organic feed items are excluded before they enter normalized storage.
-- Gemini validation runs after capture when the user starts it from the popup, uses fixed-size chunks, and may leave posts in `pending` or `unknown` when quota pressure or errors occur.
+- Gemini validation runs after capture, uses fixed-size chunks, and may leave posts in `pending` or `unknown` when quota pressure or errors occur.

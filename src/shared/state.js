@@ -82,10 +82,33 @@ function buildFallbackFingerprint(item) {
   return `${item.author.toLowerCase()}::${item.extracted_at}`;
 }
 
+function stripFingerprint(item) {
+  const { fingerprint, ...nextItem } = item || {};
+  return nextItem;
+}
+
+function cloneItems(items = []) {
+  return items.map((item) => ({ ...item }));
+}
+
+function getItemsWithFingerprint(tabState) {
+  return Array.from(tabState.itemsByFingerprint.values()).map((item) => ({ ...item }));
+}
+
+function getInterestValidationForItem(tabState, item) {
+  const fingerprint = item?.fingerprint || buildFallbackFingerprint(item);
+
+  if (fingerprint && tabState.itemsByFingerprint.has(fingerprint)) {
+    return tabState.itemsByFingerprint.get(fingerprint).interest_validation;
+  }
+
+  return item?.interest_validation || createPendingInterestValidation();
+}
+
 export function getSerializableState(tabId) {
   const tabState = getOrCreateTabState(tabId);
-  const itemsWithFingerprint = Array.from(tabState.itemsByFingerprint.values());
-  const items = itemsWithFingerprint.map(({ fingerprint, ...item }) => item);
+  const itemsWithFingerprint = getItemsWithFingerprint(tabState);
+  const items = itemsWithFingerprint.map(stripFingerprint);
   const aiCounts = getAiCounts(itemsWithFingerprint);
 
   return {
@@ -99,7 +122,7 @@ export function getSerializableState(tabId) {
     noProgressCycles: tabState.noProgressCycles,
     stalledWaitCount: tabState.stalledWaitCount,
     lastReason: tabState.lastReason,
-    enrichedItems: tabState.enrichedItems.map(({ fingerprint, ...item }) => item),
+    enrichedItems: tabState.enrichedItems.map(stripFingerprint),
     enrichment: { ...tabState.enrichment },
     aiCounts,
     aiQueue: { ...tabState.aiQueue, pendingCount: aiCounts.pending },
@@ -107,9 +130,23 @@ export function getSerializableState(tabId) {
 }
 
 export function getExportItems(tabId) {
-  return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).map(
-    ({ fingerprint, ...item }) => item
-  );
+  return getItemsWithFingerprint(getOrCreateTabState(tabId)).map(stripFingerprint);
+}
+
+export function getLatestResultItems(tabId) {
+  const tabState = getOrCreateTabState(tabId);
+  const hasEnrichedSnapshot = tabState.enrichedItems.length > 0;
+  const sourceItems = hasEnrichedSnapshot
+    ? tabState.enrichedItems
+    : getItemsWithFingerprint(tabState);
+
+  return {
+    mode: hasEnrichedSnapshot ? "enriched" : "raw",
+    items: sourceItems.map((item) => ({
+      ...item,
+      interest_validation: getInterestValidationForItem(tabState, item),
+    })),
+  };
 }
 
 export function markStatus(tabId, status) {
@@ -269,6 +306,19 @@ export function getAiValidationEligibleItems(tabId) {
   );
 }
 
+export function resetAiValidationStatuses(tabId) {
+  const tabState = getOrCreateTabState(tabId);
+
+  for (const [fingerprint, item] of tabState.itemsByFingerprint.entries()) {
+    tabState.itemsByFingerprint.set(fingerprint, {
+      ...item,
+      interest_validation: createPendingInterestValidation(),
+    });
+  }
+
+  return persistState(tabId);
+}
+
 export function updateInterestValidation(tabId, fingerprint, validationPatch) {
   const tabState = getOrCreateTabState(tabId);
   const currentItem = tabState.itemsByFingerprint.get(fingerprint);
@@ -327,10 +377,11 @@ export function startEnrichment(
   { totalPosts = 0, totalAuthors = 0, lastMessage = null } = {}
 ) {
   const tabState = getOrCreateTabState(tabId);
-  tabState.enrichedItems = [];
+  const baseItems = getItemsWithFingerprint(tabState);
+  tabState.enrichedItems = cloneItems(baseItems);
   tabState.enrichment = {
     status: ENRICHMENT_STATES.running,
-    totalPosts,
+    totalPosts: totalPosts || baseItems.length,
     processedPosts: 0,
     totalAuthors,
     processedAuthors: 0,
@@ -353,11 +404,21 @@ export function updateEnrichmentProgress(tabId, patch = {}) {
   return persistState(tabId);
 }
 
+export function syncEnrichedItems(tabId, enrichedItems, patch = {}) {
+  const tabState = getOrCreateTabState(tabId);
+  tabState.enrichedItems = cloneItems(enrichedItems);
+  tabState.enrichment = {
+    ...tabState.enrichment,
+    ...patch,
+    status: ENRICHMENT_STATES.running,
+    readyForDownload: false,
+  };
+  return persistState(tabId);
+}
+
 export function completeEnrichment(tabId, enrichedItems, lastMessage) {
   const tabState = getOrCreateTabState(tabId);
-  tabState.enrichedItems = Array.isArray(enrichedItems)
-    ? enrichedItems.map((item) => ({ ...item }))
-    : [];
+  tabState.enrichedItems = Array.isArray(enrichedItems) ? cloneItems(enrichedItems) : [];
   tabState.enrichment = {
     ...tabState.enrichment,
     status: ENRICHMENT_STATES.completed,
@@ -373,7 +434,6 @@ export function completeEnrichment(tabId, enrichedItems, lastMessage) {
 
 export function failEnrichment(tabId, lastMessage) {
   const tabState = getOrCreateTabState(tabId);
-  tabState.enrichedItems = [];
   tabState.enrichment = {
     ...tabState.enrichment,
     status: ENRICHMENT_STATES.failed,
@@ -386,7 +446,6 @@ export function failEnrichment(tabId, lastMessage) {
 
 export function cancelEnrichment(tabId, lastMessage) {
   const tabState = getOrCreateTabState(tabId);
-  tabState.enrichedItems = [];
   tabState.enrichment = {
     ...tabState.enrichment,
     status: ENRICHMENT_STATES.cancelled,
@@ -398,7 +457,7 @@ export function cancelEnrichment(tabId, lastMessage) {
 }
 
 export function getEnrichedItems(tabId) {
-  return getOrCreateTabState(tabId).enrichedItems.map((item) => ({ ...item }));
+  return cloneItems(getOrCreateTabState(tabId).enrichedItems);
 }
 
 export async function persistState(tabId) {
@@ -431,7 +490,10 @@ export async function hydrateStateFromStorage(tabId) {
   }
 
   tabState.enrichedItems = Array.isArray(storedState?.enrichedItems)
-    ? storedState.enrichedItems.map((item) => ({ ...item }))
+    ? storedState.enrichedItems.map((item) => ({
+        ...item,
+        fingerprint: item?.fingerprint || buildFallbackFingerprint(item),
+      }))
     : [];
 
   tabState.ignoredSamples = Array.isArray(storedState?.ignoredSamples)

@@ -2,6 +2,7 @@ export const AUTHOR_WEIGHT = {
   high: "high",
   medium: "medium",
   low: "low",
+  trivial: "trivial",
 };
 
 const HIGH_ROLE_PATTERNS = [
@@ -100,21 +101,27 @@ export function classifyAuthorWeight({ role, followers } = {}) {
   const normalizedRole = String(role || "").trim();
   const normalizedFollowers = parseFollowerCount(followers);
 
-  if (
-    HIGH_ROLE_PATTERNS.some((pattern) => pattern.test(normalizedRole)) ||
-    normalizedFollowers >= 10000
-  ) {
+  if (normalizedFollowers != null) {
+    if (normalizedFollowers >= 10000) {
+      return AUTHOR_WEIGHT.high;
+    }
+
+    if (normalizedFollowers >= 2000) {
+      return AUTHOR_WEIGHT.medium;
+    }
+
+    return AUTHOR_WEIGHT.low;
+  }
+
+  if (HIGH_ROLE_PATTERNS.some((pattern) => pattern.test(normalizedRole))) {
     return AUTHOR_WEIGHT.high;
   }
 
-  if (
-    MEDIUM_ROLE_PATTERNS.some((pattern) => pattern.test(normalizedRole)) ||
-    normalizedFollowers >= 2000
-  ) {
+  if (MEDIUM_ROLE_PATTERNS.some((pattern) => pattern.test(normalizedRole))) {
     return AUTHOR_WEIGHT.medium;
   }
 
-  return AUTHOR_WEIGHT.low;
+  return AUTHOR_WEIGHT.trivial;
 }
 
 export function buildAuthorSignalPatch(authorData = {}) {

@@ -76,6 +76,8 @@ export const MESSAGE_TYPES = {
   crawlerCommand: "collector/crawler-command",
   crawlerProgress: "collector/crawler-progress",
   log: "collector/log",
+  downloadResultRequest: "collector/download-result-request",
+  enrichmentStartRequest: "collector/enrichment-start-request",
   exportRawRequest: "collector/export-raw-request",
   exportEnrichedRequest: "collector/export-enriched-request",
   exportPreviewRequest: "collector/export-preview-request",

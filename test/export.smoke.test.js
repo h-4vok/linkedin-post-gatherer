@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildResultFilename,
   serializeExportItems,
   toEnrichedExportItem,
   toRawExportItem,
@@ -36,5 +37,23 @@ describe("export helpers", () => {
     expect(json).toContain('"author_role": "Engineer"');
     expect(json).toContain('"author_followers": 1200');
     expect(json).toContain('"author_weight": "high"');
+  });
+
+  it("defaults enriched author_weight to trivial when signals are missing", () => {
+    const json = serializeExportItems([
+      toEnrichedExportItem({
+        author: "Ada Lovelace",
+        author_role: null,
+        author_followers: null,
+      }),
+    ]);
+
+    expect(json).toContain('"author_weight": "trivial"');
+  });
+
+  it("builds result filenames with local datetime precision", () => {
+    expect(buildResultFilename(new Date(2026, 3, 5, 9, 7, 3))).toBe(
+      "linkedin_crawl_result_20260405-090703.json"
+    );
   });
 });

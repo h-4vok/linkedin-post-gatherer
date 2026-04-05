@@ -32,18 +32,34 @@ describe("author weight helpers", () => {
   });
 
   it("classifies high-weight authors from role or followers", () => {
-    expect(classifyAuthorWeight({ role: "CEO at Example", followers: 500 })).toBe(
+    expect(classifyAuthorWeight({ role: "Engineer", followers: 20000 })).toBe(AUTHOR_WEIGHT.high);
+    expect(classifyAuthorWeight({ role: "CEO at Example", followers: null })).toBe(
       AUTHOR_WEIGHT.high
     );
-    expect(classifyAuthorWeight({ role: "Engineer", followers: 20000 })).toBe(AUTHOR_WEIGHT.high);
   });
 
   it("classifies medium and low-weight authors deterministically", () => {
-    expect(classifyAuthorWeight({ role: "Engineering Director", followers: 900 })).toBe(
+    expect(classifyAuthorWeight({ role: "Engineering Director", followers: null })).toBe(
       AUTHOR_WEIGHT.medium
     );
     expect(classifyAuthorWeight({ role: "Software Engineer", followers: 400 })).toBe(
       AUTHOR_WEIGHT.low
+    );
+  });
+
+  it("classifies missing or weak signals as trivial when followers are absent", () => {
+    expect(classifyAuthorWeight({ role: null, followers: null })).toBe(AUTHOR_WEIGHT.trivial);
+    expect(classifyAuthorWeight({ role: "Software Engineer", followers: null })).toBe(
+      AUTHOR_WEIGHT.trivial
+    );
+  });
+
+  it("keeps strong role fallback when followers are absent", () => {
+    expect(classifyAuthorWeight({ role: "CEO at Example", followers: null })).toBe(
+      AUTHOR_WEIGHT.high
+    );
+    expect(classifyAuthorWeight({ role: "Engineering Director", followers: null })).toBe(
+      AUTHOR_WEIGHT.medium
     );
   });
 
@@ -57,6 +73,19 @@ describe("author weight helpers", () => {
       author_role: "CTO",
       author_followers: 11000,
       author_weight: AUTHOR_WEIGHT.high,
+    });
+  });
+
+  it("builds a trivial signal patch when enrichment has no useful signals", () => {
+    expect(
+      buildAuthorSignalPatch({
+        role: null,
+        followers: null,
+      })
+    ).toEqual({
+      author_role: null,
+      author_followers: null,
+      author_weight: AUTHOR_WEIGHT.trivial,
     });
   });
 });

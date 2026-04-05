@@ -84,7 +84,7 @@ The repo gate is enforced as a pre-push check through `npm run prepush`.
 
 ## Output Contract Rules
 
-- The exported artifact is a local `JSON` file named in the shape `linkedin_dump_[date].json`.
+- The exported artifact is a local `JSON` file named in the shape `linkedin_crawl_result_[yyyymmdd-hhmmss].json`.
 - Each exported item should preserve the normalized MVP contract:
   - `link`
   - `author`

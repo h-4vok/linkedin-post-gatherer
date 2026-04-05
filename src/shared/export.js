@@ -22,10 +22,29 @@ export function toEnrichedExportItem(item) {
     ...pickExportFields(item),
     author_role: item?.author_role || null,
     author_followers: typeof item?.author_followers === "number" ? item.author_followers : null,
-    author_weight: item?.author_weight || "low",
+    author_weight: item?.author_weight || "trivial",
   };
 }
 
 export function serializeExportItems(items) {
   return JSON.stringify(items, null, 2);
+}
+
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+
+export function buildResultFilename(date = new Date()) {
+  const timestamp = [
+    date.getFullYear(),
+    padDatePart(date.getMonth() + 1),
+    padDatePart(date.getDate()),
+  ].join("");
+  const time = [
+    padDatePart(date.getHours()),
+    padDatePart(date.getMinutes()),
+    padDatePart(date.getSeconds()),
+  ].join("");
+
+  return `linkedin_crawl_result_${timestamp}-${time}.json`;
 }
