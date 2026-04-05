@@ -28,9 +28,11 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - Wait randomized delays between `1.5s` and `3.5s`
 - Stop automatically at a user-defined accepted-post target with default `50` and supported range `1-200`
 - When LinkedIn stops yielding new accepted posts, pause for up to `20s` and retry multiple times before declaring the feed stalled
-- Export a local file named `linkedin_dump_[date].json`
-- Offer both `Export raw` for the current batch and `Export enriched` for a sequential author-enrichment pass with visible progress
+- Export a local file named `linkedin_crawl_result_[yyyymmdd-hhmmss].json`
+- Use `Download Result` in the LinkedIn panel to fetch the latest stable dataset snapshot: raw, enriched, raw+AI, or enriched+AI
+- Run author enrichment and AI validation as separate manual passes from the LinkedIn panel, each with explicit `Run` and `Cancel` controls
 - Enrich author metadata with `author_role`, `author_followers`, and `author_weight`
+- Enriched exports may classify authors as `trivial` when enrichment does not find followers or a strong enough role signal to support a meaningful priority
 - Optionally enrich each captured post with `interest_validation` using Gemini AI Studio
 - Run AI validation manually after capture in fixed chunks, with retry/backoff on quota and rate pressure
 
@@ -43,7 +45,7 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 5. Watch the hero metric, status badge, long-wait counter, and activity log as collection progresses.
 6. Press `Stop` at any time or let the crawler stop automatically at the target.
 7. Optionally configure Gemini in the popup and run AI validation for the captured batch once the crawler stops.
-8. Export the current raw batch immediately, or start enriched export and monitor post/author progress until the enriched `JSON` is ready.
+8. Run author enrichment and AI validation sequentially from the LinkedIn panel as needed, then use `Download Result` to export the latest composed `JSON` snapshot.
 
 ## Standard Commands
 

@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendIgnoredSamples,
   getAiValidationEligibleItems,
+  getLatestResultItems,
   getSerializableState,
+  hydrateStateFromStorage,
+  resetAiValidationStatuses,
   resetDebugState,
   setAiQueueState,
+  startEnrichment,
+  syncEnrichedItems,
   updateInterestValidationBatch,
 } from "../src/shared/state.js";
 
@@ -47,7 +52,7 @@ describe("tab state debug samples", () => {
     expect(state.ignoredSamples[49].reason).toBe("reason-2");
   });
 
-  it("targets only pending and unknown posts for AI reruns", async () => {
+  it("targets only pending and unknown posts for queue processing", async () => {
     mockChromeStorage();
 
     await resetDebugState(52);
@@ -101,17 +106,65 @@ describe("tab state debug samples", () => {
       },
     });
 
-    const { hydrateStateFromStorage } = await import("../src/shared/state.js");
     await hydrateStateFromStorage(52);
 
     const eligible = getAiValidationEligibleItems(52);
     expect(eligible.map((item) => item.fingerprint)).toEqual(["fp-pending", "fp-unknown"]);
   });
 
+  it("resets AI validation to pending for all posts on rerun", async () => {
+    mockChromeStorage();
+
+    globalThis.chrome.storage.session.get.mockResolvedValue({
+      "collector.tab.54": {
+        items: [
+          {
+            fingerprint: "fp-interested",
+            author: "Ada",
+            extracted_at: "2026-03-30T10:00:00.000Z",
+            interest_validation: {
+              status: "interested",
+              attempts: 1,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: null,
+              source: "gemini",
+            },
+          },
+          {
+            fingerprint: "fp-not",
+            author: "Grace",
+            extracted_at: "2026-03-30T10:01:00.000Z",
+            interest_validation: {
+              status: "not_interested",
+              attempts: 1,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: null,
+              source: "gemini",
+            },
+          },
+        ],
+      },
+    });
+
+    await hydrateStateFromStorage(54);
+    await resetAiValidationStatuses(54);
+
+    const state = getSerializableState(54);
+    expect(state.aiCounts).toEqual({
+      pending: 2,
+      interested: 0,
+      not_interested: 0,
+      unknown: 0,
+    });
+    expect(getAiValidationEligibleItems(54).map((item) => item.fingerprint)).toEqual([
+      "fp-interested",
+      "fp-not",
+    ]);
+  });
+
   it("persists bulk AI queue progress and batch validation patches", async () => {
     mockChromeStorage();
 
-    const { hydrateStateFromStorage } = await import("../src/shared/state.js");
     globalThis.chrome.storage.session.get.mockResolvedValue({
       "collector.tab.53": {
         items: [
@@ -189,6 +242,71 @@ describe("tab state debug samples", () => {
       interested: 1,
       not_interested: 1,
       unknown: 0,
+    });
+  });
+
+  it("composes the latest enriched snapshot with AI validation from raw state", async () => {
+    mockChromeStorage();
+
+    globalThis.chrome.storage.session.get.mockResolvedValue({
+      "collector.tab.55": {
+        items: [
+          {
+            fingerprint: "fp-1",
+            author: "Ada",
+            extracted_at: "2026-03-30T10:00:00.000Z",
+            author_profile_url: "https://www.linkedin.com/in/ada/",
+            interest_validation: {
+              status: "interested",
+              attempts: 1,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: null,
+              source: "gemini",
+            },
+          },
+        ],
+      },
+    });
+
+    await hydrateStateFromStorage(55);
+    await startEnrichment(55, {
+      totalPosts: 1,
+      totalAuthors: 1,
+      lastMessage: "Starting author enrichment.",
+    });
+    await syncEnrichedItems(
+      55,
+      [
+        {
+          fingerprint: "fp-1",
+          author: "Ada",
+          extracted_at: "2026-03-30T10:00:00.000Z",
+          author_profile_url: "https://www.linkedin.com/in/ada/",
+          author_role: "Engineer",
+          author_followers: 1200,
+          author_weight: "low",
+        },
+      ],
+      {
+        processedPosts: 1,
+        processedAuthors: 1,
+        currentAuthor: "Ada",
+        currentPostIndex: 1,
+        lastMessage: "Cache hit for Ada.",
+      }
+    );
+
+    const latest = getLatestResultItems(55);
+
+    expect(latest.mode).toBe("enriched");
+    expect(latest.items).toHaveLength(1);
+    expect(latest.items[0]).toMatchObject({
+      author_role: "Engineer",
+      author_followers: 1200,
+      author_weight: "low",
+    });
+    expect(latest.items[0].interest_validation).toMatchObject({
+      status: "interested",
     });
   });
 });
