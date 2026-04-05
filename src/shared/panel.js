@@ -91,8 +91,9 @@ export function createPanelMarkup() {
         </div>
         <div class="harvester-actions">
           <button class="harvester-button harvester-stop" type="button">Stop</button>
-          <button class="harvester-button harvester-export-raw" type="button">Export raw</button>
-          <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
+          <button class="harvester-button harvester-download-result" type="button">Download Result</button>
+          <button class="harvester-button harvester-enrichment-run" type="button">Run Enrichment</button>
+          <button class="harvester-button harvester-enrichment-cancel" type="button">Cancel Enrichment</button>
           <button class="harvester-button harvester-ai-run" type="button">Run AI validation</button>
           <button class="harvester-button harvester-ai-cancel" type="button">Cancel AI validation</button>
         </div>

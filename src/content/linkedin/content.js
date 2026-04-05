@@ -70,6 +70,9 @@ import {
     crawlerCommand: "collector/crawler-command",
     crawlerProgress: "collector/crawler-progress",
     log: "collector/log",
+    downloadResultRequest: "collector/download-result-request",
+    enrichmentStartRequest: "collector/enrichment-start-request",
+    enrichmentCancelRequest: "collector/enrichment-cancel-request",
     exportRawRequest: "collector/export-raw-request",
     exportEnrichedRequest: "collector/export-enriched-request",
     exportPreviewRequest: "collector/export-preview-request",
@@ -809,16 +812,12 @@ import {
     return getAiDoneCount() > 0;
   }
 
-  function getEnrichedButtonLabel() {
+  function getEnrichmentRunButtonLabel() {
     if (uiState.enrichment.status === ENRICHMENT_STATES.running) {
-      return "Enriching...";
+      return "Enrichment running...";
     }
 
-    if (uiState.enrichment.readyForDownload) {
-      return uiState.aiCounts.pending > 0 ? "Download enriched (AI pending)" : "Download enriched";
-    }
-
-    return "Export enriched";
+    return "Run Enrichment";
   }
 
   function escapeRegExp(value) {
@@ -2172,7 +2171,8 @@ import {
         }
 
         .harvester-start,
-        .harvester-export-enriched,
+        .harvester-download-result,
+        .harvester-enrichment-run,
         .harvester-ai-run {
           background: #2563eb;
           color: #ffffff;
@@ -2180,7 +2180,7 @@ import {
         }
 
         .harvester-stop,
-        .harvester-export-raw,
+        .harvester-enrichment-cancel,
         .harvester-ai-cancel {
           background: #f8fafc;
           color: #334155;
@@ -2394,8 +2394,9 @@ import {
           </div>
           <div class="harvester-actions">
             <button class="harvester-button harvester-stop" type="button">Stop</button>
-            <button class="harvester-button harvester-export-raw" type="button">Export raw</button>
-            <button class="harvester-button harvester-export-enriched" type="button">Export enriched</button>
+            <button class="harvester-button harvester-download-result" type="button">Download Result</button>
+            <button class="harvester-button harvester-enrichment-run" type="button">Run Enrichment</button>
+            <button class="harvester-button harvester-enrichment-cancel" type="button">Cancel Enrichment</button>
             <button class="harvester-button harvester-ai-run" type="button">Run AI validation</button>
             <button class="harvester-button harvester-ai-cancel" type="button">Cancel AI validation</button>
           </div>
@@ -2472,8 +2473,9 @@ import {
       reposts: shadowRoot.querySelector(".harvester-reposts"),
       mode: shadowRoot.querySelector(".harvester-mode"),
       waitCount: shadowRoot.querySelector(".harvester-wait-count"),
-      exportRawButton: shadowRoot.querySelector(".harvester-export-raw"),
-      exportEnrichedButton: shadowRoot.querySelector(".harvester-export-enriched"),
+      downloadResultButton: shadowRoot.querySelector(".harvester-download-result"),
+      enrichmentRunButton: shadowRoot.querySelector(".harvester-enrichment-run"),
+      enrichmentCancelButton: shadowRoot.querySelector(".harvester-enrichment-cancel"),
       aiRunButton: shadowRoot.querySelector(".harvester-ai-run"),
       aiCancelButton: shadowRoot.querySelector(".harvester-ai-cancel"),
       enrichmentSummary: shadowRoot.querySelector(".harvester-enrichment-summary"),
@@ -2521,11 +2523,14 @@ import {
     panel.chip.addEventListener("click", function () {
       void setPanelMinimized(false);
     });
-    panel.exportRawButton.addEventListener("click", function () {
-      void exportCurrentBatch("raw");
+    panel.downloadResultButton.addEventListener("click", function () {
+      void downloadLatestResultFromPanel();
     });
-    panel.exportEnrichedButton.addEventListener("click", function () {
-      void exportCurrentBatch("enriched");
+    panel.enrichmentRunButton.addEventListener("click", function () {
+      void runEnrichmentFromPanel();
+    });
+    panel.enrichmentCancelButton.addEventListener("click", function () {
+      void cancelEnrichmentFromPanel();
     });
     panel.aiRunButton.addEventListener("click", function () {
       void runAiValidationFromPanel();
@@ -2566,15 +2571,12 @@ import {
       uiState.runState === RUN_STATES.unavailable;
     panel.stopButton.disabled =
       uiState.runState !== RUN_STATES.running && uiState.runState !== RUN_STATES.stopping;
-    panel.exportRawButton.disabled = uiState.runState === RUN_STATES.unavailable;
-    panel.exportEnrichedButton.disabled =
-      uiState.runState === RUN_STATES.running ||
-      uiState.runState === RUN_STATES.stopping ||
-      uiState.runState === RUN_STATES.unavailable ||
-      uiState.enrichment.status === ENRICHMENT_STATES.running;
+    panel.downloadResultButton.disabled = !canDownloadResult();
+    panel.enrichmentRunButton.disabled = !canRunEnrichment();
+    panel.enrichmentCancelButton.disabled = !isEnrichmentRunning();
     panel.aiRunButton.disabled = !canRunAiValidation();
     panel.aiCancelButton.disabled = !isAiValidationRunning();
-    panel.exportEnrichedButton.textContent = getEnrichedButtonLabel();
+    panel.enrichmentRunButton.textContent = getEnrichmentRunButtonLabel();
     panel.aiRunButton.textContent = getAiRunButtonLabel();
     panel.heroCount.textContent = String(uiState.count);
     panel.heroTarget.textContent = String(uiState.targetCount);
@@ -2639,48 +2641,41 @@ import {
     panel.shell.style.width = uiState.panelMinimized ? "164px" : "320px";
   }
 
-  async function exportCurrentBatch(mode) {
-    if (!panel || !isExtensionContextAvailable()) {
-      return;
-    }
+  function canDownloadResult() {
+    return (
+      uiState.count > 0 &&
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping &&
+      uiState.runState !== RUN_STATES.unavailable &&
+      !isEnrichmentRunning() &&
+      !isAiValidationRunning()
+    );
+  }
 
-    const isEnriched = mode === "enriched";
-    const button = isEnriched ? panel.exportEnrichedButton : panel.exportRawButton;
-    button.disabled = true;
-    pushActivity(isEnriched ? "Enriched export requested." : "Raw export requested.");
-
-    try {
-      const response = await safeSendMessage({
-        type: isEnriched ? MESSAGE_TYPES.exportEnrichedRequest : MESSAGE_TYPES.exportRawRequest,
-      });
-
-      if (!response?.ok) {
-        throw new Error(response?.error || "Export failed");
-      }
-
-      if (response?.filename) {
-        pushActivity("Downloaded " + response.filename);
-      } else if (isEnriched) {
-        pushActivity("Author enrichment started.");
-      }
-    } catch (error) {
-      pushActivity(error.message);
-    } finally {
-      button.disabled = false;
-      renderPanel();
-    }
+  function canRunEnrichment() {
+    return (
+      uiState.count > 0 &&
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping &&
+      uiState.runState !== RUN_STATES.unavailable &&
+      !isEnrichmentRunning() &&
+      !isAiValidationRunning()
+    );
   }
 
   function canRunAiValidation() {
-    const hasEligiblePosts =
-      (uiState.aiCounts.pending || 0) > 0 || (uiState.aiCounts.unknown || 0) > 0;
-
     return (
-      hasEligiblePosts &&
+      uiState.count > 0 &&
       uiState.runState !== RUN_STATES.running &&
       uiState.runState !== RUN_STATES.stopping &&
+      uiState.runState !== RUN_STATES.unavailable &&
+      !isEnrichmentRunning() &&
       !isAiValidationRunning()
     );
+  }
+
+  function isEnrichmentRunning() {
+    return uiState.enrichment.status === ENRICHMENT_STATES.running;
   }
 
   function isAiValidationRunning() {
@@ -2700,6 +2695,82 @@ import {
     }
 
     return "Run AI validation";
+  }
+
+  async function downloadLatestResultFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.downloadResultButton.disabled = true;
+    pushActivity("Result download requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.downloadResultRequest,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to download result.");
+      }
+
+      pushActivity("Downloaded " + response.filename);
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
+  }
+
+  async function runEnrichmentFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.enrichmentRunButton.disabled = true;
+    pushActivity("Enrichment requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.enrichmentStartRequest,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to start enrichment.");
+      }
+
+      pushActivity("Enrichment started.");
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
+  }
+
+  async function cancelEnrichmentFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.enrichmentCancelButton.disabled = true;
+    pushActivity("Enrichment cancellation requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.enrichmentCancelRequest,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to cancel enrichment.");
+      }
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
   }
 
   async function runAiValidationFromPanel() {

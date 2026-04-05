@@ -14,7 +14,12 @@ import {
   buildAuthorSignalPatch,
   normalizeAuthorName,
 } from "../shared/author-weight.js";
-import { toEnrichedExportItem, toRawExportItem, serializeExportItems } from "../shared/export.js";
+import {
+  buildResultFilename,
+  serializeExportItems,
+  toEnrichedExportItem,
+  toRawExportItem,
+} from "../shared/export.js";
 import {
   buildValidationResult,
   getAiConfig,
@@ -35,14 +40,17 @@ import {
   finalizeStopCrawler,
   getAiValidationEligibleItems,
   getEnrichedItems,
+  getLatestResultItems,
   getSerializableState,
   markFeedReady,
   mergeNewItems,
   persistState,
+  resetAiValidationStatuses,
   resetDebugState,
   requestStopCrawler,
   setAiQueueState,
   setTargetCount,
+  syncEnrichedItems,
   startEnrichment,
   startCrawler,
   updateEnrichmentProgress,
@@ -101,6 +109,8 @@ async function handleMessage(message, sender) {
   if (
     tabId == null &&
     !tablessMessageTypes.has(message?.type) &&
+    message?.type !== MESSAGE_TYPES.downloadResultRequest &&
+    message?.type !== MESSAGE_TYPES.enrichmentStartRequest &&
     message?.type !== MESSAGE_TYPES.exportRawRequest &&
     message?.type !== MESSAGE_TYPES.exportEnrichedRequest
   ) {
@@ -251,8 +261,16 @@ async function handleMessage(message, sender) {
         return { ok: false, error: "Stop the crawler before running AI validation." };
       }
 
+      if (isEnrichmentRunning(state)) {
+        return { ok: false, error: "Wait for enrichment to finish before running AI validation." };
+      }
+
       if (activeAiValidationRuns.has(tabId)) {
         return { ok: true, started: false, aiQueue: state.aiQueue };
+      }
+
+      if (!state.count) {
+        return { ok: false, error: "No posts available for AI validation." };
       }
 
       if (configError) {
@@ -266,10 +284,12 @@ async function handleMessage(message, sender) {
         return { ok: false, error: configError, aiQueue: queueState.aiQueue };
       }
 
+      await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
+      await resetAiValidationStatuses(tabId);
       const eligibleItems = getAiValidationEligibleItems(tabId);
 
       if (!eligibleItems.length) {
-        return { ok: false, error: "No pending or unknown posts available for AI validation." };
+        return { ok: false, error: "No posts available for AI validation." };
       }
 
       const totalChunks = Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize);
@@ -373,13 +393,18 @@ async function handleMessage(message, sender) {
       }
 
       const state = getSerializableState(tabId);
+
+      if (!state.count) {
+        return { ok: false, error: "No posts available to export." };
+      }
+
       logServiceWorkerEvent("raw-export-requested", {
         tabId,
         count: state.count,
       });
       const exportResult = await downloadJsonExport({
         items: state.items.map(toRawExportItem),
-        filename: buildExportFilename("raw"),
+        filename: buildExportFilename(),
       });
 
       logServiceWorkerEvent("raw-export-completed", {
@@ -391,39 +416,61 @@ async function handleMessage(message, sender) {
       return { type: MESSAGE_TYPES.exportResult, ...exportResult };
     }
 
-    case MESSAGE_TYPES.exportEnrichedRequest: {
+    case MESSAGE_TYPES.downloadResultRequest: {
       if (tabId == null) {
         return { ok: false, error: "tabId is required for export" };
       }
 
       const state = getSerializableState(tabId);
 
+      if (isProcessingLocked(state)) {
+        return { ok: false, error: "Wait for the active process to finish before downloading." };
+      }
+
+      const latestResult = getLatestResultItems(tabId);
+
+      if (!latestResult.items.length) {
+        return { ok: false, error: "No posts available to download." };
+      }
+
+      const items =
+        latestResult.mode === "enriched"
+          ? latestResult.items.map(toEnrichedExportItem)
+          : latestResult.items.map(toRawExportItem);
+      const exportResult = await downloadJsonExport({
+        items,
+        filename: buildExportFilename(),
+      });
+      logServiceWorkerEvent("result-download-completed", {
+        tabId,
+        mode: latestResult.mode,
+        filename: exportResult.filename,
+        count: items.length,
+      });
+      return {
+        type: MESSAGE_TYPES.exportResult,
+        ...exportResult,
+        mode: latestResult.mode,
+      };
+    }
+
+    case MESSAGE_TYPES.enrichmentStartRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for enrichment" };
+      }
+
+      const state = getSerializableState(tabId);
+
       if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
-        return {
-          ok: false,
-          error: "Stop the crawler before running enriched export.",
-        };
+        return { ok: false, error: "Stop the crawler before running enrichment." };
+      }
+
+      if (isAiValidationRunning(state)) {
+        return { ok: false, error: "Wait for AI validation to finish before running enrichment." };
       }
 
       if (!state.count) {
         return { ok: false, error: "No posts available to enrich." };
-      }
-
-      if (
-        state.enrichment?.status === ENRICHMENT_STATES.completed &&
-        state.enrichment?.readyForDownload
-      ) {
-        const enrichedItems = getEnrichedItems(tabId).map(toEnrichedExportItem);
-        const exportResult = await downloadJsonExport({
-          items: enrichedItems,
-          filename: buildExportFilename("enriched"),
-        });
-        logServiceWorkerEvent("enriched-export-completed", {
-          tabId,
-          filename: exportResult.filename,
-          count: enrichedItems.length,
-        });
-        return { type: MESSAGE_TYPES.exportResult, ...exportResult, ready: true };
       }
 
       if (activeEnrichments.has(tabId)) {
@@ -448,6 +495,50 @@ async function handleMessage(message, sender) {
       };
     }
 
+    case MESSAGE_TYPES.exportEnrichedRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required for export" };
+      }
+
+      const state = getSerializableState(tabId);
+
+      if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
+        return {
+          ok: false,
+          error: "Stop the crawler before running enriched export.",
+        };
+      }
+
+      if (!state.count) {
+        return { ok: false, error: "No posts available to enrich." };
+      }
+
+      if (
+        state.enrichment?.status === ENRICHMENT_STATES.completed &&
+        state.enrichment?.readyForDownload
+      ) {
+        const enrichedItems = getLatestResultItems(tabId).items.map(toEnrichedExportItem);
+        const exportResult = await downloadJsonExport({
+          items: enrichedItems,
+          filename: buildExportFilename(),
+        });
+        logServiceWorkerEvent("enriched-export-completed", {
+          tabId,
+          filename: exportResult.filename,
+          count: enrichedItems.length,
+        });
+        return { type: MESSAGE_TYPES.exportResult, ...exportResult, ready: true };
+      }
+
+      return handleMessage(
+        {
+          type: MESSAGE_TYPES.enrichmentStartRequest,
+          tabId,
+        },
+        sender
+      );
+    }
+
     case MESSAGE_TYPES.exportPreviewRequest: {
       if (tabId == null) {
         return { ok: false, error: "tabId is required for preview" };
@@ -470,14 +561,14 @@ async function handleMessage(message, sender) {
 
       const items =
         mode === "enriched"
-          ? getEnrichedItems(tabId).map(toEnrichedExportItem)
+          ? getLatestResultItems(tabId).items.map(toEnrichedExportItem)
           : state.items.map(toRawExportItem);
 
       return {
         ok: true,
         mode,
         count: items.length,
-        filename: buildExportFilename(mode),
+        filename: buildExportFilename(),
         json: serializeExportItems(items),
       };
     }
@@ -591,9 +682,25 @@ async function broadcastAiActivity(tabId, text) {
   }
 }
 
-function buildExportFilename(mode, date = new Date()) {
-  const suffix = mode === "enriched" ? "_enriched" : "";
-  return `linkedin_dump_${date.toISOString().slice(0, 10)}${suffix}.json`;
+function isEnrichmentRunning(state) {
+  return state?.enrichment?.status === ENRICHMENT_STATES.running;
+}
+
+function isAiValidationRunning(state) {
+  return [AI_QUEUE_PHASES.running, AI_QUEUE_PHASES.backingOff].includes(state?.aiQueue?.phase);
+}
+
+function isProcessingLocked(state) {
+  return (
+    state?.runState === RUN_STATES.running ||
+    state?.runState === RUN_STATES.stopping ||
+    isEnrichmentRunning(state) ||
+    isAiValidationRunning(state)
+  );
+}
+
+function buildExportFilename(date = new Date()) {
+  return buildResultFilename(date);
 }
 
 function resolveTabId(message, sender) {
@@ -902,8 +1009,7 @@ async function runEnrichment(tabId) {
   activeEnrichments.set(tabId, run);
 
   try {
-    const state = getSerializableState(tabId);
-    const enrichedItems = state.items.map((item) => ({ ...item }));
+    const enrichedItems = getEnrichedItems(tabId);
     const authorBuckets = buildAuthorBuckets(enrichedItems);
 
     let processedAuthors = 0;
@@ -936,7 +1042,7 @@ async function runEnrichment(tabId) {
       processedAuthors += 1;
       processedPosts += bucket.indexes.length;
 
-      progressState = await updateEnrichmentProgress(tabId, {
+      progressState = await syncEnrichedItems(tabId, enrichedItems, {
         processedAuthors,
         processedPosts,
         currentAuthor: bucket.author,

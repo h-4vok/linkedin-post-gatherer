@@ -27,7 +27,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 3. Exclude promoted posts, polls, and suggested content before capture.
 4. Extract raw post metadata into a stable normalized structure.
 5. Accumulate deduplicated results in local extension state.
-6. Expose progress in the popup UI and export either a raw or enriched `JSON` payload for downstream manual use.
+6. Expose progress in the popup UI and export the latest available result snapshot as a local `JSON` payload for downstream manual use.
 
 ## Product Boundaries
 
@@ -73,7 +73,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
 7. Background logic deduplicates and stores intermediate collection state, then optionally runs Gemini AI Studio validation as a manual post-capture bulk job in fixed chunks.
 8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`, while the popup also shows AI validation and author-enrichment status.
-9. When requested, export logic produces either a raw `linkedin_dump_[date].json` file or an enriched `linkedin_dump_[date]_enriched.json` file after sequential author enrichment.
+9. When requested, export logic produces `linkedin_crawl_result_[yyyymmdd-hhmmss].json` from the latest stable snapshot: raw, enriched, raw+AI, or enriched+AI.
 
 ## Core Operational Contracts
 
@@ -96,7 +96,9 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - `author_role`
   - `author_followers`
   - `author_weight`
+- `author_weight` in enriched exports may be `high`, `medium`, `low`, or `trivial`; `trivial` means enrichment did not find enough follower or role evidence to assign a meaningful importance signal.
 - AI validation may also persist an `interest_validation` block on each item for raw and enriched export flows.
+- Author enrichment and AI validation are separate sequential passes. They share the same tab-scoped dataset and the final download composes the latest enrichment snapshot with the latest AI validation overlay.
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.
 - `post_text` should prefer the preloaded LinkedIn expandable text node so long posts can be captured without triggering UI expansion.

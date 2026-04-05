@@ -39,8 +39,9 @@ describe("floating panel helpers", () => {
     const markup = createPanelMarkup();
 
     expect(markup).toContain("harvester-header");
-    expect(markup).toContain("harvester-export-raw");
-    expect(markup).toContain("harvester-export-enriched");
+    expect(markup).toContain("harvester-download-result");
+    expect(markup).toContain("harvester-enrichment-run");
+    expect(markup).toContain("harvester-enrichment-cancel");
     expect(markup).toContain("harvester-ai-run");
     expect(markup).toContain("harvester-ai-cancel");
     expect(markup).toContain("harvester-start");
