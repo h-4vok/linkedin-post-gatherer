@@ -1,3 +1,10 @@
+import {
+  cleanPersonLabel as sharedCleanPersonLabel,
+  extractPostText as extractSharedPostText,
+  normalizeWhitespace as sharedNormalizeWhitespace,
+  stripExpandableSuffix as sharedStripExpandableSuffix,
+} from "../../shared/extractor.js";
+
 (function () {
   const FEED_SELECTOR = 'div[componentkey="container-update-list_mainFeed-lazy-container"]';
   const POST_SELECTOR = 'div[role="listitem"]';
@@ -665,7 +672,7 @@
   }
 
   function normalizeWhitespace(value) {
-    return value.replace(/\s+/g, " ").trim();
+    return sharedNormalizeWhitespace(value);
   }
 
   function escapeHtml(value) {
@@ -752,7 +759,9 @@
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.failed) {
-      return uiState.aiQueue.lastMessage || "Last AI validation chunk failed and was marked unknown.";
+      return (
+        uiState.aiQueue.lastMessage || "Last AI validation chunk failed and was marked unknown."
+      );
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.cancelled) {
@@ -817,31 +826,11 @@
   }
 
   function stripExpandableSuffix(text) {
-    return text
-      .replace(/(?:…|\.{3})\s*more\s*$/i, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    return sharedStripExpandableSuffix(text);
   }
 
   function cleanPersonLabel(text) {
-    if (!text) {
-      return null;
-    }
-
-    let cleaned = normalizeWhitespace(text);
-    cleaned = cleaned.replace(/\bOpen to work\b/gi, " ");
-    cleaned = cleaned.replace(/\bHiring\b/gi, " ");
-    cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
-    cleaned = cleaned.replace(/\bPremium\b/gi, " ");
-    cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
-    cleaned = cleaned.replace(/[,:]+/g, " ");
-    cleaned = cleaned.replace(/â€¢/g, " ");
-    cleaned = cleaned.replace(/[•·]+/g, " ");
-    cleaned = cleaned.replace(/â€¢|Â·/g, " ");
-    cleaned = cleaned.replace(/\s+[•·]+\s*$/g, " ");
-    cleaned = normalizeWhitespace(cleaned);
-
-    return cleaned || null;
+    return sharedCleanPersonLabel(text);
   }
 
   function hasRelationshipMarker(text) {
@@ -1006,7 +995,7 @@
 
     for (const marker of RELATIONSHIP_MARKERS) {
       const markerPattern = new RegExp(
-        "\\s*[•\\-·]?\\s*" + escapeRegExp(marker) + "(?:\\s|$)",
+        `\\s*[\\u2022\\-\\u00B7]?\\s*${escapeRegExp(marker)}(?:\\s|$)`,
         "gi"
       );
 
@@ -1211,14 +1200,8 @@
   }
 
   function extractPostText(postElement) {
-    const textBox = postElement.querySelector('[data-testid="expandable-text-box"]');
-
-    if (!textBox) {
-      return null;
-    }
-
-    const text = stripExpandableSuffix(textBox.textContent || "");
-    return text || null;
+    const text = extractSharedPostText(postElement);
+    return stripExpandableSuffix(text || "") || null;
   }
 
   function extractPostedTime(postElement) {
@@ -2689,7 +2672,8 @@
   }
 
   function canRunAiValidation() {
-    const hasEligiblePosts = (uiState.aiCounts.pending || 0) > 0 || (uiState.aiCounts.unknown || 0) > 0;
+    const hasEligiblePosts =
+      (uiState.aiCounts.pending || 0) > 0 || (uiState.aiCounts.unknown || 0) > 0;
 
     return (
       hasEligiblePosts &&
