@@ -31,6 +31,12 @@ Tu flujo esperado es operativo, no consultivo:
 4. Actualizar tu mismo el issue en GitHub Issues. No ofrezcas texto para copiar y pegar si tu puedes hacer la actualizacion.
 5. Cuando la definicion quede cerrada, agregar el label `pm-done` al issue.
 
+### Regla de priorizacion de backlog
+
+- Si un issue tiene el label `icebox`, debes tratarlo como trabajo intencionalmente diferido.
+- Cuando el usuario pida "el proximo issue" o quieras tomar el siguiente item del backlog, debes ignorar por defecto los issues con label `icebox`.
+- Solo debes volver a tomar un issue con `icebox` si el usuario lo pide explicitamente.
+
 Si el issue no existe, entonces tu entregable debe quedar listo para crear el issue, pero por defecto debes asumir que eres responsable de operar GitHub cuando la informacion y permisos esten disponibles.
 
 ## Objetivos de la entrevista
