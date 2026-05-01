@@ -35,6 +35,8 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - Enriched exports may classify authors as `trivial` when enrichment does not find followers or a strong enough role signal to support a meaningful priority
 - Optionally enrich each captured post with `interest_validation` using Gemini AI Studio
 - Run AI validation manually after capture in fixed chunks, with retry/backoff on quota and rate pressure
+- The default AI validation prompt rejects posts whose dominant goal is sales, PR, upsell, demo booking, offers, lead generation, product or feature launches, or commercial CTAs
+- Custom Gemini prompts saved by the user are preserved; only the previous built-in default prompt migrates silently to the current default
 
 ## Expected Workflow
 
