@@ -6,6 +6,7 @@ const aiApiKeyInput = document.querySelector("#ai-api-key");
 const aiModelInput = document.querySelector("#ai-model");
 const aiSystemInstructionInput = document.querySelector("#ai-system-instruction");
 const saveAiConfigButton = document.querySelector("#save-ai-config");
+const resetAiPromptButton = document.querySelector("#reset-ai-prompt");
 const resetDebugButton = document.querySelector("#reset-debug-data");
 const captureFeedDumpButton = document.querySelector("#capture-feed-dump");
 const previewIgnoredButton = document.querySelector("#preview-ignored-json");
@@ -27,8 +28,26 @@ let activeState = null;
 void hydratePopup();
 
 saveAiConfigButton?.addEventListener("click", async () => {
+  await saveAiConfig({
+    feedbackText: "Saving AI config...",
+    successText: "AI config saved.",
+    button: saveAiConfigButton,
+  });
+});
+
+resetAiPromptButton?.addEventListener("click", async () => {
+  aiSystemInstructionInput.value = AI_DEFAULT_CONFIG.systemInstruction;
+  await saveAiConfig({
+    feedbackText: "Resetting prompt...",
+    successText: "Prompt reset to the current default.",
+    button: resetAiPromptButton,
+  });
+});
+
+async function saveAiConfig({ feedbackText, successText, button }) {
   saveAiConfigButton.disabled = true;
-  popupFeedback.textContent = "Saving AI config...";
+  resetAiPromptButton.disabled = true;
+  popupFeedback.textContent = feedbackText;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -46,13 +65,15 @@ saveAiConfigButton?.addEventListener("click", async () => {
     }
 
     renderAiConfig(response.config);
-    popupFeedback.textContent = "AI config saved.";
+    popupFeedback.textContent = successText;
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {
     saveAiConfigButton.disabled = false;
+    resetAiPromptButton.disabled = false;
+    button?.focus();
   }
-});
+}
 
 resetDebugButton?.addEventListener("click", async () => {
   if (activeTabId == null || !isLinkedInTab(activeTabUrl)) {

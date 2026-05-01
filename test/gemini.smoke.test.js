@@ -8,11 +8,7 @@ import {
   validatePostsInterestBulk,
   validatePostInterest,
 } from "../src/background/gemini.js";
-import {
-  DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
-  LEGACY_GEMINI_SYSTEM_INSTRUCTION,
-  PREVIOUS_DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
-} from "../src/background/default-system-instruction.js";
+import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../src/background/default-system-instruction.js";
 import { AI_RATE_LIMIT, AI_STATUS } from "../src/shared/constants.js";
 
 describe("gemini validation helpers", () => {
@@ -71,24 +67,8 @@ describe("gemini validation helpers", () => {
     expect(prompt).toContain("download the report");
   });
 
-  it("migrates the exact legacy default system instruction to the new default", () => {
-    const config = normalizeAiConfig({
-      systemInstruction: `\r\n${LEGACY_GEMINI_SYSTEM_INSTRUCTION.replace(/\n/g, "\r\n")}\r\n`,
-    });
-
-    expect(config.systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
-  });
-
-  it("migrates the previous built-in default system instruction to the new default", () => {
-    const config = normalizeAiConfig({
-      systemInstruction: PREVIOUS_DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
-    });
-
-    expect(config.systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
-  });
-
   it("preserves custom system instructions instead of overwriting them", () => {
-    const customInstruction = `${LEGACY_GEMINI_SYSTEM_INSTRUCTION}\n\nCustom scoring note.`;
+    const customInstruction = `${DEFAULT_GEMINI_SYSTEM_INSTRUCTION}\n\nCustom scoring note.`;
     const config = normalizeAiConfig({
       systemInstruction: customInstruction,
     });
