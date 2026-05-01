@@ -1,4 +1,5 @@
 import { AI_DEFAULT_CONFIG, AI_RATE_LIMIT, AI_STATUS, STORAGE_KEYS } from "../shared/constants.js";
+import { LEGACY_GEMINI_SYSTEM_INSTRUCTION } from "./default-system-instruction.js";
 
 const GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -18,14 +19,37 @@ export async function saveAiConfig(configPatch) {
 }
 
 export function normalizeAiConfig(config) {
+  const systemInstruction = normalizeSystemInstruction(config?.systemInstruction);
+
   return {
     enabled: Boolean(config?.enabled),
     apiKey: String(config?.apiKey || "").trim(),
     model: String(config?.model || AI_DEFAULT_CONFIG.model).trim(),
-    systemInstruction: String(
-      config?.systemInstruction || AI_DEFAULT_CONFIG.systemInstruction
-    ).trim(),
+    systemInstruction,
   };
+}
+
+function normalizeSystemInstruction(systemInstruction) {
+  const trimmedInstruction = String(systemInstruction || "").trim();
+
+  if (!trimmedInstruction) {
+    return AI_DEFAULT_CONFIG.systemInstruction;
+  }
+
+  if (
+    normalizeInstructionForComparison(trimmedInstruction) ===
+    normalizeInstructionForComparison(LEGACY_GEMINI_SYSTEM_INSTRUCTION)
+  ) {
+    return AI_DEFAULT_CONFIG.systemInstruction;
+  }
+
+  return trimmedInstruction;
+}
+
+function normalizeInstructionForComparison(systemInstruction) {
+  return String(systemInstruction || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
 }
 
 export function getAiConfigError(config) {

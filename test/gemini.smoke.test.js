@@ -8,7 +8,10 @@ import {
   validatePostsInterestBulk,
   validatePostInterest,
 } from "../src/background/gemini.js";
-import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../src/background/default-system-instruction.js";
+import {
+  DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
+  LEGACY_GEMINI_SYSTEM_INSTRUCTION,
+} from "../src/background/default-system-instruction.js";
 import { AI_RATE_LIMIT, AI_STATUS } from "../src/shared/constants.js";
 
 describe("gemini validation helpers", () => {
@@ -44,6 +47,39 @@ describe("gemini validation helpers", () => {
 
     expect(config.systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
     expect(getAiConfigError(config)).toBeNull();
+  });
+
+  it("uses the new default system instruction for empty config", () => {
+    expect(normalizeAiConfig().systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
+  });
+
+  it("keeps explicit anti-sales and anti-PR criteria in the default prompt", () => {
+    const prompt = DEFAULT_GEMINI_SYSTEM_INSTRUCTION.toLowerCase();
+
+    expect(prompt).toContain("vender");
+    expect(prompt).toContain("pr comercial");
+    expect(prompt).toContain("demo");
+    expect(prompt).toContain("lead-gen");
+    expect(prompt).toContain("oferta");
+    expect(prompt).toContain("lanzamiento");
+    expect(prompt).toContain("cta");
+  });
+
+  it("migrates the exact legacy default system instruction to the new default", () => {
+    const config = normalizeAiConfig({
+      systemInstruction: `\r\n${LEGACY_GEMINI_SYSTEM_INSTRUCTION.replace(/\n/g, "\r\n")}\r\n`,
+    });
+
+    expect(config.systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
+  });
+
+  it("preserves custom system instructions instead of overwriting them", () => {
+    const customInstruction = `${LEGACY_GEMINI_SYSTEM_INSTRUCTION}\n\nCustom scoring note.`;
+    const config = normalizeAiConfig({
+      systemInstruction: customInstruction,
+    });
+
+    expect(config.systemInstruction).toBe(customInstruction);
   });
 
   it("parses an interested decision from Gemini", async () => {
@@ -186,6 +222,13 @@ describe("gemini validation helpers", () => {
 
     expect(result.interestedIds).toEqual(["fp-1", "fp-3"]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const requestBody = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    const userText = requestBody.contents[0].parts[0].text;
+
+    expect(requestBody.generationConfig.responseMimeType).toBe("application/json");
+    expect(userText).toContain('Return valid JSON only in this exact shape: {"interested_ids"');
+    expect(userText).toContain("Do not include explanations, markdown, or extra keys.");
   });
 
   it("rejects invalid bulk payloads as parse errors", async () => {
