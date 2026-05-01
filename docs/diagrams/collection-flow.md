@@ -18,12 +18,18 @@ flowchart TD
     M --> N[Reuse local author cache]
     N --> O[Open one LinkedIn profile tab at a time]
     O --> P[Extract role and followers]
-    P --> Q[Classify author weight]
-    Q --> R[Persist enrichment snapshot]
+    P --> Q{Cacheable role or followers?}
+    Q -->|Yes| R[Update author cache]
+    Q -->|No| R2[Skip cache and log retry]
+    R --> R3[Classify author weight]
+    R2 --> R3
+    R3 --> R4[Persist enrichment snapshot]
     K --> S[User triggers AI validation]
-    R --> S
+    R4 --> S
     S --> T[Reset items to pending and send chunked Gemini bulk request]
-    T --> U[Persist interest_validation]
+    T --> T2{Chunk retryable?}
+    T2 -->|Backoff| T
+    T2 -->|Resolved or final| U[Persist interest_validation]
     U --> V[Emit AI activity to panel]
     V --> W[Update popup counter]
     W --> X{Limit reached?}
@@ -41,7 +47,7 @@ flowchart TD
 - Failures in extraction should be observable and should not corrupt stored results.
 - Export is local-only in the current phase.
 - The LinkedIn panel downloads the latest stable result snapshot and disables download while the crawler, enrichment, or AI validation is running.
-- Author enrichment is sequential, preserves partial progress on cancellation, and the latest download composes that snapshot with the latest AI validation overlay.
+- Author enrichment is sequential, preserves partial progress on cancellation, skips cache writes for authors without useful role or follower signals, and the latest download composes that snapshot with the latest AI validation overlay.
 - Enriched author classification may end in `trivial` when enrichment cannot find followers or a strong enough role signal; `low` is reserved for authors with real but weak follower evidence.
 - Non-organic feed items are excluded before they enter normalized storage.
-- Gemini validation runs after capture, uses fixed-size chunks, and may leave posts in `pending` or `unknown` when quota pressure or errors occur.
+- Gemini validation runs after capture, uses fixed-size sequential chunks, blocks later chunks during backoff, and may leave retryable provider failures as `unresolved` when attempts are exhausted.

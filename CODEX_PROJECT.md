@@ -92,12 +92,18 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
   - `is_repost`
   - `type`
   - `extracted_at`
+  - `comment_count`
+  - `comment_count_text`
+  - `reaction_count`
+  - `reaction_count_text`
 - The enriched export extends each item with:
   - `author_role`
   - `author_followers`
   - `author_weight`
 - `author_weight` in enriched exports may be `high`, `medium`, `low`, or `trivial`; `trivial` means enrichment did not find enough follower or role evidence to assign a meaningful importance signal.
+- Author enrichment must not persist cache entries when both role and followers are empty; those authors should remain retryable on future enrichment runs while the current export still reflects the observed empty signals.
 - AI validation may also persist an `interest_validation` block on each item for raw and enriched export flows.
+- Retryable Gemini failures that exhaust attempts should use `interest_validation.status = "unresolved"` with retry metadata instead of being counted as completed `unknown` classifications.
 - Author enrichment and AI validation are separate sequential passes. They share the same tab-scoped dataset and the final download composes the latest enrichment snapshot with the latest AI validation overlay.
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.

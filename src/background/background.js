@@ -14,6 +14,7 @@ import {
   buildAuthorSignalPatch,
   normalizeAuthorName,
 } from "../shared/author-weight.js";
+import { hasCacheableAuthorSignals, isEmptyAuthorCacheEntry } from "../shared/author-cache.js";
 import {
   buildResultFilename,
   serializeExportItems,
@@ -39,6 +40,7 @@ import {
   failEnrichment,
   finalizeStopCrawler,
   getAiValidationEligibleItems,
+  getAiValidationItemsByFingerprint,
   getEnrichedItems,
   getLatestResultItems,
   getSerializableState,
@@ -303,6 +305,7 @@ async function handleMessage(message, sender) {
         totalChunks,
         completedChunks: 0,
         currentChunkIndex: 1,
+        activeChunkFingerprints: [],
         lastMessage: "Starting AI validation bulk run.",
       });
       await broadcastAiActivity(
@@ -320,9 +323,19 @@ async function handleMessage(message, sender) {
       }
 
       const activeRun = activeAiValidationRuns.get(tabId);
+      await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
 
       if (!activeRun) {
-        return { ok: true, state: getSerializableState(tabId) };
+        const state = await setAiQueueState(tabId, {
+          phase: AI_QUEUE_PHASES.cancelled,
+          retryAfterUntil: null,
+          lastError: null,
+          activeChunkFingerprints: [],
+          lastMessage: "AI validation cancellation requested.",
+        });
+        await broadcastAiActivity(tabId, "AI validation cancellation requested.");
+        await broadcastCountUpdated(tabId, state);
+        return { ok: true, state };
       }
 
       activeRun.cancelled = true;
@@ -330,6 +343,7 @@ async function handleMessage(message, sender) {
         phase: AI_QUEUE_PHASES.cancelled,
         retryAfterUntil: null,
         lastError: null,
+        activeChunkFingerprints: [],
         lastMessage: "AI validation cancellation requested.",
       });
       await broadcastAiActivity(tabId, "AI validation cancellation requested.");
@@ -771,6 +785,7 @@ async function runAiValidation(tabId, run) {
         phase: AI_QUEUE_PHASES.cancelled,
         retryAfterUntil: null,
         lastError: null,
+        activeChunkFingerprints: [],
         lastMessage: "AI validation cancelled.",
       });
       await broadcastAiActivity(tabId, "AI validation cancelled.");
@@ -778,7 +793,21 @@ async function runAiValidation(tabId, run) {
       return;
     }
 
-    const eligibleItems = getAiValidationEligibleItems(tabId);
+    const queuedState = getSerializableState(tabId);
+    const activeChunkFingerprints = queuedState.aiQueue?.activeChunkFingerprints || [];
+    let eligibleItems = getAiValidationEligibleItems(tabId);
+    let chunk =
+      activeChunkFingerprints.length > 0
+        ? getAiValidationItemsByFingerprint(tabId, activeChunkFingerprints)
+        : [];
+
+    if (activeChunkFingerprints.length > 0 && !chunk.length) {
+      const clearedState = await setAiQueueState(tabId, {
+        activeChunkFingerprints: [],
+      });
+      await broadcastCountUpdated(tabId, clearedState);
+      eligibleItems = getAiValidationEligibleItems(tabId);
+    }
 
     if (!eligibleItems.length) {
       const completedState = await setAiQueueState(tabId, {
@@ -786,6 +815,7 @@ async function runAiValidation(tabId, run) {
         retryAfterUntil: null,
         lastError: null,
         currentChunkIndex: 0,
+        activeChunkFingerprints: [],
         lastMessage: "AI validation completed for the current batch.",
       });
       await broadcastAiActivity(
@@ -812,7 +842,14 @@ async function runAiValidation(tabId, run) {
 
     await pauseForRateLimit(tabId);
 
-    const chunk = eligibleItems.slice(0, AI_RATE_LIMIT.chunkSize);
+    if (run.cancelled) {
+      continue;
+    }
+
+    if (!chunk.length) {
+      chunk = eligibleItems.slice(0, AI_RATE_LIMIT.chunkSize);
+    }
+
     const stateBeforeChunk = getSerializableState(tabId);
     const currentChunkIndex = Math.min(
       (stateBeforeChunk.aiQueue?.completedChunks || 0) + 1,
@@ -828,6 +865,7 @@ async function runAiValidation(tabId, run) {
       lastError: null,
       lastRequestAt: new Date().toISOString(),
       currentChunkIndex,
+      activeChunkFingerprints: chunk.map((item) => item.fingerprint),
       lastMessage: `Running AI validation chunk ${currentChunkIndex}/${stateBeforeChunk.aiQueue?.totalChunks || 1}.`,
     });
     await broadcastCountUpdated(tabId, processingState);
@@ -865,10 +903,7 @@ async function runAiValidation(tabId, run) {
         retryAfterUntil: null,
         lastError: null,
         lastRequestAt: new Date().toISOString(),
-        processedPosts: Math.min(
-          updatedState.aiQueue.totalPosts,
-          (updatedState.aiQueue.processedPosts || 0) + chunk.length
-        ),
+        processedPosts: updatedState.aiCounts.interested + updatedState.aiCounts.not_interested,
         completedChunks: Math.min(
           updatedState.aiQueue.totalChunks,
           (updatedState.aiQueue.completedChunks || 0) + 1
@@ -877,6 +912,7 @@ async function runAiValidation(tabId, run) {
           updatedState.aiQueue.totalChunks,
           (updatedState.aiQueue.completedChunks || 0) + 2
         ),
+        activeChunkFingerprints: [],
         lastMessage: `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} completed.`,
       });
       const interestedCount = chunk.filter((item) => interestedIds.has(item.fingerprint)).length;
@@ -897,14 +933,20 @@ async function runAiValidation(tabId, run) {
       const shouldRetry = shouldRetryGeminiError(normalizedError, attempts);
 
       if (!shouldRetry) {
+        const retryableError = isRetryableAiError(normalizedError);
+        const retryAfterUntil = buildRetryAfterUntil(normalizedError.retryAfterMs);
         const updatedState = await updateInterestValidationBatch(
           tabId,
           chunk.map((item) => ({
             fingerprint: item.fingerprint,
             validationPatch: buildValidationResult(
-              AI_STATUS.unknown,
+              retryableError ? AI_STATUS.unresolved : AI_STATUS.unknown,
               attempts,
-              normalizedError.kind
+              normalizedError.kind,
+              {
+                retryAfterMs: normalizedError.retryAfterMs,
+                retryAfterUntil,
+              }
             ),
           }))
         );
@@ -912,10 +954,6 @@ async function runAiValidation(tabId, run) {
           phase: AI_QUEUE_PHASES.failed,
           retryAfterUntil: null,
           lastError: normalizedError.message,
-          processedPosts: Math.min(
-            updatedState.aiQueue.totalPosts,
-            (updatedState.aiQueue.processedPosts || 0) + chunk.length
-          ),
           completedChunks: Math.min(
             updatedState.aiQueue.totalChunks,
             (updatedState.aiQueue.completedChunks || 0) + 1
@@ -924,7 +962,10 @@ async function runAiValidation(tabId, run) {
             updatedState.aiQueue.totalChunks,
             (updatedState.aiQueue.completedChunks || 0) + 2
           ),
-          lastMessage: `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} failed and was marked unknown.`,
+          activeChunkFingerprints: [],
+          lastMessage: retryableError
+            ? `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} unresolved after provider overload. Retry later.`
+            : `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} failed and was marked unknown.`,
         });
         logServiceWorkerEvent("ai-validation-chunk-failed", {
           tabId,
@@ -933,10 +974,10 @@ async function runAiValidation(tabId, run) {
           attempts,
           message: normalizedError.message,
         });
-        await broadcastAiActivity(
-          tabId,
-          `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} failed. ${chunk.length} posts marked unknown.`
-        );
+        const failedMessage = retryableError
+          ? `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} unresolved after provider overload. Retry later.`
+          : `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} failed. ${chunk.length} posts marked unknown.`;
+        await broadcastAiActivity(tabId, failedMessage);
         await broadcastCountUpdated(tabId, failedState);
         continue;
       }
@@ -958,6 +999,7 @@ async function runAiValidation(tabId, run) {
         retryAfterUntil: retryUntil,
         lastError: normalizedError.message,
         currentChunkIndex,
+        activeChunkFingerprints: chunk.map((item) => item.fingerprint),
         lastMessage: `Backing off before retrying chunk ${currentChunkIndex}.`,
       });
       logServiceWorkerEvent("ai-validation-chunk-backoff", {
@@ -971,7 +1013,7 @@ async function runAiValidation(tabId, run) {
       });
       await broadcastAiActivity(
         tabId,
-        `AI validation backing off before retrying chunk ${currentChunkIndex}/${queueState.aiQueue.totalChunks}.`
+        `AI validation chunk ${currentChunkIndex}/${queueState.aiQueue.totalChunks} waiting ${Math.ceil(retryDelayMs / 1000)}s before retry due to provider overload.`
       );
       await broadcastCountUpdated(tabId, queueState);
       await scheduleValidationRetryAlarm(tabId, retryDelayMs);
@@ -1047,10 +1089,7 @@ async function runEnrichment(tabId) {
         processedPosts,
         currentAuthor: bucket.author,
         currentPostIndex: processedPosts,
-        lastMessage:
-          authorData.source === "cache"
-            ? `Cache hit for ${bucket.author}.`
-            : `Profile resolved for ${bucket.author}.`,
+        lastMessage: getAuthorResolutionMessage(bucket.author, authorData.cacheDisposition),
       });
       await broadcastCountUpdated(tabId, progressState);
     }
@@ -1105,7 +1144,7 @@ function countDistinctAuthors(items) {
 }
 
 async function resolveAuthorData(bucket, tabId) {
-  const cacheEntry = await findAuthorCacheEntry(bucket);
+  const cacheEntry = await findAuthorCacheEntry(bucket, tabId);
 
   if (cacheEntry) {
     logServiceWorkerEvent("author-cache-hit", {
@@ -1113,7 +1152,7 @@ async function resolveAuthorData(bucket, tabId) {
       author: bucket.author,
       cacheKey: cacheEntry.cacheKey,
     });
-    return { ...cacheEntry.entry, source: "cache" };
+    return { ...cacheEntry.entry, source: "cache", cacheDisposition: "cache-hit" };
   }
 
   logServiceWorkerEvent("author-cache-miss", {
@@ -1127,6 +1166,7 @@ async function resolveAuthorData(bucket, tabId) {
       role: null,
       followers: null,
       source: "fallback",
+      cacheDisposition: "skipped-empty",
     };
   }
 
@@ -1140,30 +1180,71 @@ async function resolveAuthorData(bucket, tabId) {
     resolved_at: new Date().toISOString(),
   };
 
+  if (!hasCacheableAuthorSignals(entry)) {
+    logServiceWorkerEvent("author-cache-skipped-empty", {
+      tabId,
+      author: bucket.author,
+      profileUrl: bucket.profileUrl,
+    });
+    return { ...entry, source: "profile", cacheDisposition: "skipped-empty" };
+  }
+
   await upsertAuthorCacheEntry(bucket, {
     ...entry,
     ...buildAuthorSignalPatch(entry),
   });
 
-  return { ...entry, source: "profile" };
+  return { ...entry, source: "profile", cacheDisposition: "cached" };
 }
 
-async function findAuthorCacheEntry(bucket) {
+async function findAuthorCacheEntry(bucket, tabId) {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.authorCache);
   const cache = stored[STORAGE_KEYS.authorCache] || {};
+  const cacheKeys = [bucket.cacheKey, bucket.fallbackAuthorKey].filter(Boolean);
+  const emptyCacheKeys = [];
 
-  if (bucket.cacheKey && cache[bucket.cacheKey]) {
-    return { cacheKey: bucket.cacheKey, entry: cache[bucket.cacheKey] };
+  for (const cacheKey of cacheKeys) {
+    const entry = cache[cacheKey];
+
+    if (!entry) {
+      continue;
+    }
+
+    if (!isEmptyAuthorCacheEntry(entry)) {
+      return { cacheKey, entry };
+    }
+
+    emptyCacheKeys.push(cacheKey);
   }
 
-  if (bucket.fallbackAuthorKey && cache[bucket.fallbackAuthorKey]) {
-    return {
-      cacheKey: bucket.fallbackAuthorKey,
-      entry: cache[bucket.fallbackAuthorKey],
-    };
+  if (emptyCacheKeys.length) {
+    for (const cacheKey of emptyCacheKeys) {
+      delete cache[cacheKey];
+    }
+
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.authorCache]: cache,
+    });
+    logServiceWorkerEvent("author-cache-empty-entry-evicted", {
+      tabId,
+      author: bucket.author,
+      cacheKeys: emptyCacheKeys,
+    });
   }
 
   return null;
+}
+
+function getAuthorResolutionMessage(author, cacheDisposition) {
+  if (cacheDisposition === "cache-hit") {
+    return `Cache hit for ${author}.`;
+  }
+
+  if (cacheDisposition === "skipped-empty") {
+    return `No cacheable author signals for ${author}. Will retry on a future run.`;
+  }
+
+  return `Profile resolved for ${author}.`;
 }
 
 async function upsertAuthorCacheEntry(bucket, entry) {
@@ -1257,6 +1338,18 @@ function normalizeAiError(error) {
   const nextError = new Error(error?.message || "Unexpected AI validation error.");
   nextError.kind = "network-error";
   return nextError;
+}
+
+function isRetryableAiError(error) {
+  return ["rate-limited", "quota-exhausted", "network-error", "server-error"].includes(error?.kind);
+}
+
+function buildRetryAfterUntil(retryAfterMs) {
+  if (typeof retryAfterMs !== "number" || !Number.isFinite(retryAfterMs) || retryAfterMs <= 0) {
+    return null;
+  }
+
+  return new Date(Date.now() + retryAfterMs).toISOString();
 }
 
 async function scheduleValidationRetryAlarm(tabId, delayMs) {

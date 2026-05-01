@@ -164,6 +164,21 @@ describe("gemini validation helpers", () => {
     });
   });
 
+  it("builds unresolved validation metadata with retry hints", () => {
+    expect(
+      buildValidationResult(AI_STATUS.unresolved, 3, "server-error", {
+        retryAfterMs: 45000,
+        retryAfterUntil: "2026-05-01T10:00:45.000Z",
+      })
+    ).toMatchObject({
+      status: AI_STATUS.unresolved,
+      attempts: 3,
+      error: "server-error",
+      retry_after_ms: 45000,
+      retry_after_until: "2026-05-01T10:00:45.000Z",
+    });
+  });
+
   it("parses bulk interested ids and ignores duplicates or unknown ids", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

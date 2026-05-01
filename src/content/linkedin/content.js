@@ -1,5 +1,6 @@
 import {
   cleanPersonLabel as sharedCleanPersonLabel,
+  extractPostEngagement as extractSharedPostEngagement,
   extractPostText as extractSharedPostText,
   normalizeWhitespace as sharedNormalizeWhitespace,
   stripExpandableSuffix as sharedStripExpandableSuffix,
@@ -57,6 +58,7 @@ import {
     interested: "interested",
     notInterested: "not_interested",
     unknown: "unknown",
+    unresolved: "unresolved",
   };
 
   const MESSAGE_TYPES = {
@@ -563,6 +565,7 @@ import {
       interested: 0,
       not_interested: 0,
       unknown: 0,
+      unresolved: 0,
     };
   }
 
@@ -663,6 +666,10 @@ import {
 
     if ((nextAiCounts.unknown || 0) > (uiState.aiCounts.unknown || 0)) {
       pushActivity("AI marked a chunk as unknown after retries.");
+    }
+
+    if ((nextAiCounts.unresolved || 0) > (uiState.aiCounts.unresolved || 0)) {
+      pushActivity("AI left a chunk unresolved after provider overload. Retry later.");
     }
   }
 
@@ -801,11 +808,7 @@ import {
   }
 
   function getAiDoneCount() {
-    return (
-      (uiState.aiCounts.interested || 0) +
-      (uiState.aiCounts.not_interested || 0) +
-      (uiState.aiCounts.unknown || 0)
-    );
+    return (uiState.aiCounts.interested || 0) + (uiState.aiCounts.not_interested || 0);
   }
 
   function hasAiResults() {
@@ -1281,6 +1284,8 @@ import {
   }
 
   function buildNormalizedItem(postElement, author, repostMetadata, now) {
+    const engagement = extractSharedPostEngagement(postElement);
+
     return {
       link: null,
       author: author,
@@ -1291,6 +1296,10 @@ import {
       is_repost: repostMetadata.is_repost,
       type: "organic",
       extracted_at: now.toISOString(),
+      comment_count: engagement.comment_count,
+      comment_count_text: engagement.comment_count_text,
+      reaction_count: engagement.reaction_count,
+      reaction_count_text: engagement.reaction_count_text,
       author_role: null,
       author_followers: null,
       author_weight: "low",

@@ -129,13 +129,20 @@ export async function validatePostsInterestBulk(items, config, options = {}) {
   };
 }
 
-export function buildValidationResult(status, attempts, error = null) {
+export function buildValidationResult(status, attempts, error = null, options = {}) {
+  const retryAfterMs =
+    typeof options.retryAfterMs === "number" && Number.isFinite(options.retryAfterMs)
+      ? options.retryAfterMs
+      : null;
+
   return {
     status,
     source: "gemini",
     attempts,
     validated_at: new Date().toISOString(),
     error,
+    retry_after_ms: retryAfterMs,
+    retry_after_until: options.retryAfterUntil || null,
   };
 }
 

@@ -9,6 +9,10 @@ function pickExportFields(item) {
     is_repost: Boolean(item?.is_repost),
     type: item?.type || "organic",
     extracted_at: item?.extracted_at || null,
+    comment_count: typeof item?.comment_count === "number" ? item.comment_count : null,
+    comment_count_text: item?.comment_count_text || null,
+    reaction_count: typeof item?.reaction_count === "number" ? item.reaction_count : null,
+    reaction_count_text: item?.reaction_count_text || null,
     interest_validation: item?.interest_validation || null,
   };
 }

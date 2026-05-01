@@ -52,7 +52,7 @@ describe("tab state debug samples", () => {
     expect(state.ignoredSamples[49].reason).toBe("reason-2");
   });
 
-  it("targets only pending and unknown posts for queue processing", async () => {
+  it("targets only pending and unknown posts for active queue processing", async () => {
     mockChromeStorage();
 
     await resetDebugState(52);
@@ -87,6 +87,18 @@ describe("tab state debug samples", () => {
               attempts: 2,
               validated_at: "2026-03-30T10:02:00.000Z",
               error: "rate-limited",
+              source: "gemini",
+            },
+          },
+          {
+            fingerprint: "fp-unresolved",
+            author: "Barbara",
+            extracted_at: "2026-03-30T10:02:30.000Z",
+            interest_validation: {
+              status: "unresolved",
+              attempts: 3,
+              validated_at: "2026-03-30T10:03:00.000Z",
+              error: "server-error",
               source: "gemini",
             },
           },
@@ -142,6 +154,18 @@ describe("tab state debug samples", () => {
               source: "gemini",
             },
           },
+          {
+            fingerprint: "fp-unresolved",
+            author: "Barbara",
+            extracted_at: "2026-03-30T10:02:00.000Z",
+            interest_validation: {
+              status: "unresolved",
+              attempts: 3,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: "server-error",
+              source: "gemini",
+            },
+          },
         ],
       },
     });
@@ -151,14 +175,16 @@ describe("tab state debug samples", () => {
 
     const state = getSerializableState(54);
     expect(state.aiCounts).toEqual({
-      pending: 2,
+      pending: 3,
       interested: 0,
       not_interested: 0,
       unknown: 0,
+      unresolved: 0,
     });
     expect(getAiValidationEligibleItems(54).map((item) => item.fingerprint)).toEqual([
       "fp-interested",
       "fp-not",
+      "fp-unresolved",
     ]);
   });
 
@@ -233,7 +259,7 @@ describe("tab state debug samples", () => {
     expect(state.aiQueue).toMatchObject({
       phase: "running",
       totalPosts: 2,
-      processedPosts: 1,
+      processedPosts: 2,
       totalChunks: 1,
       currentChunkIndex: 1,
     });
@@ -242,7 +268,59 @@ describe("tab state debug samples", () => {
       interested: 1,
       not_interested: 1,
       unknown: 0,
+      unresolved: 0,
     });
+  });
+
+  it("counts unresolved separately and excludes it from classified progress", async () => {
+    mockChromeStorage();
+
+    globalThis.chrome.storage.session.get.mockResolvedValue({
+      "collector.tab.56": {
+        items: [
+          {
+            fingerprint: "fp-interested",
+            author: "Ada",
+            extracted_at: "2026-03-30T10:00:00.000Z",
+            interest_validation: {
+              status: "interested",
+              attempts: 1,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: null,
+              source: "gemini",
+            },
+          },
+          {
+            fingerprint: "fp-unresolved",
+            author: "Grace",
+            extracted_at: "2026-03-30T10:01:00.000Z",
+            interest_validation: {
+              status: "unresolved",
+              attempts: 3,
+              validated_at: "2026-03-30T10:05:00.000Z",
+              error: "server-error",
+              source: "gemini",
+            },
+          },
+        ],
+        aiQueue: {
+          totalPosts: 2,
+          processedPosts: 2,
+        },
+      },
+    });
+
+    await hydrateStateFromStorage(56);
+
+    const state = getSerializableState(56);
+    expect(state.aiCounts).toEqual({
+      pending: 0,
+      interested: 1,
+      not_interested: 0,
+      unknown: 0,
+      unresolved: 1,
+    });
+    expect(state.aiQueue.processedPosts).toBe(1);
   });
 
   it("composes the latest enriched snapshot with AI validation from raw state", async () => {
