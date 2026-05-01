@@ -8,10 +8,7 @@ import {
   validatePostsInterestBulk,
   validatePostInterest,
 } from "../src/background/gemini.js";
-import {
-  DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
-  LEGACY_GEMINI_SYSTEM_INSTRUCTION,
-} from "../src/background/default-system-instruction.js";
+import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../src/background/default-system-instruction.js";
 import { AI_RATE_LIMIT, AI_STATUS } from "../src/shared/constants.js";
 
 describe("gemini validation helpers", () => {
@@ -63,18 +60,15 @@ describe("gemini validation helpers", () => {
     expect(prompt).toContain("oferta");
     expect(prompt).toContain("lanzamiento");
     expect(prompt).toContain("cta");
-  });
-
-  it("migrates the exact legacy default system instruction to the new default", () => {
-    const config = normalizeAiConfig({
-      systemInstruction: `\r\n${LEGACY_GEMINI_SYSTEM_INSTRUCTION.replace(/\n/g, "\r\n")}\r\n`,
-    });
-
-    expect(config.systemInstruction).toBe(DEFAULT_GEMINI_SYSTEM_INSTRUCTION);
+    expect(prompt).toContain("podcasts");
+    expect(prompt).toContain("summits");
+    expect(prompt).toContain("listen to the full episode");
+    expect(prompt).toContain("register here");
+    expect(prompt).toContain("download the report");
   });
 
   it("preserves custom system instructions instead of overwriting them", () => {
-    const customInstruction = `${LEGACY_GEMINI_SYSTEM_INSTRUCTION}\n\nCustom scoring note.`;
+    const customInstruction = `${DEFAULT_GEMINI_SYSTEM_INSTRUCTION}\n\nCustom scoring note.`;
     const config = normalizeAiConfig({
       systemInstruction: customInstruction,
     });
@@ -161,6 +155,21 @@ describe("gemini validation helpers", () => {
       status: AI_STATUS.unknown,
       attempts: 3,
       error: "rate-limited",
+    });
+  });
+
+  it("builds unresolved validation metadata with retry hints", () => {
+    expect(
+      buildValidationResult(AI_STATUS.unresolved, 3, "server-error", {
+        retryAfterMs: 45000,
+        retryAfterUntil: "2026-05-01T10:00:45.000Z",
+      })
+    ).toMatchObject({
+      status: AI_STATUS.unresolved,
+      attempts: 3,
+      error: "server-error",
+      retry_after_ms: 45000,
+      retry_after_until: "2026-05-01T10:00:45.000Z",
     });
   });
 

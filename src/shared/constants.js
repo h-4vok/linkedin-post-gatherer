@@ -21,6 +21,7 @@ export const AI_STATUS = {
   interested: "interested",
   notInterested: "not_interested",
   unknown: "unknown",
+  unresolved: "unresolved",
 };
 export const AI_QUEUE_PHASES = {
   idle: "idle",

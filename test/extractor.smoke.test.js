@@ -3,8 +3,10 @@ import { JSDOM } from "jsdom";
 import { readFileSync } from "node:fs";
 import {
   analyzePostElement,
+  cleanPersonLabel,
   extractAuthor,
   extractAuthorProfileUrl,
+  extractPostEngagement,
   extractPostedTime,
   extractPostText,
   extractPostTextWithBreaks,
@@ -16,6 +18,7 @@ import {
   findPostOverflowButton,
   isPromotedPost,
   isSuggestedPost,
+  parseEngagementCount,
   scanFeedPosts,
 } from "../src/shared/extractor.js";
 import { AI_STATUS } from "../src/shared/constants.js";
@@ -50,6 +53,8 @@ const FEED_FIXTURE = `
           Full organic text with a hidden ending.
           <button type="button">... more</button>
         </span>
+        <button aria-label="1,234 reactions">1,234 reactions</button>
+        <button aria-label="56 comments">56 comments</button>
       </div>
     </div>
     <div role="listitem" data-post-id="promoted-1">
@@ -192,6 +197,122 @@ function setupUnicodePostDocument() {
 }
 
 describe("LinkedIn feed smoke extraction", () => {
+  it("normalizes visible engagement counts conservatively", () => {
+    expect(parseEngagementCount("1,234 comments")).toEqual({
+      value: 1234,
+      text: "1,234 comments",
+    });
+    expect(parseEngagementCount("1.234 comentarios")).toEqual({
+      value: 1234,
+      text: "1.234 comentarios",
+    });
+    expect(parseEngagementCount("1K reactions")).toEqual({
+      value: 1000,
+      text: "1K reactions",
+    });
+    expect(parseEngagementCount("1.2K reactions")).toEqual({
+      value: 1200,
+      text: "1.2K reactions",
+    });
+    expect(parseEngagementCount("1,2 mil reacciones")).toEqual({
+      value: 1200,
+      text: "1,2 mil reacciones",
+    });
+    expect(parseEngagementCount("No comments")).toEqual({
+      value: 0,
+      text: "No comments",
+    });
+    expect(parseEngagementCount("comments are disabled")).toEqual({
+      value: null,
+      text: "comments are disabled",
+    });
+  });
+
+  it("extracts post engagement snapshots and ignores share counts", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <button aria-label="2.5K reactions">2.5K reactions</button>
+          <button aria-label="0 comments">0 comments</button>
+          <button aria-label="99 reposts">99 reposts</button>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostEngagement(document.querySelector('[role="listitem"]'))).toEqual({
+      comment_count: 0,
+      comment_count_text: "0 comments",
+      reaction_count: 2500,
+      reaction_count_text: "2.5K reactions",
+    });
+  });
+
+  it("ignores engagement action buttons that are not count evidence", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <button aria-label="Reaction button state: no reaction">Like</button>
+          <button>Comment</button>
+          <p>Vote below and comment on WHY you chose that.</p>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostEngagement(document.querySelector('[role="listitem"]'))).toEqual({
+      comment_count: null,
+      comment_count_text: null,
+      reaction_count: null,
+      reaction_count_text: null,
+    });
+  });
+
+  it("keeps text evidence when engagement text cannot be parsed", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <button>Many reactions</button>
+          <button>Several comments</button>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostEngagement(document.querySelector('[role="listitem"]'))).toEqual({
+      comment_count: null,
+      comment_count_text: "Several comments",
+      reaction_count: null,
+      reaction_count_text: "Many reactions",
+    });
+  });
+
+  it("returns null engagement fields when no metrics are visible", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <p>A post with no visible engagement metrics.</p>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostEngagement(document.querySelector('[role="listitem"]'))).toEqual({
+      comment_count: null,
+      comment_count_text: null,
+      reaction_count: null,
+      reaction_count_text: null,
+    });
+  });
+
   it("finds the feed container and list items", () => {
     const document = setupDocument();
     const container = findFeedContainer(document);
@@ -234,6 +355,16 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[8])).toBe("Liz Fong-Jones");
     expect(extractAuthor(posts[10])).toBe("Patty Fonacier");
     expect(extractAuthor(posts[11])).toBe("Muhammad Haseeb");
+  });
+
+  it("cleans author labels polluted by LinkedIn badges and timestamps", () => {
+    expect(cleanPersonLabel("Risk Ledger1d Edited")).toBe("Risk Ledger");
+    expect(cleanPersonLabel("ComplyAdvantage4d Edited")).toBe("ComplyAdvantage");
+    expect(cleanPersonLabel("Aaron Levie Executive Top Voice")).toBe("Aaron Levie");
+    expect(cleanPersonLabel("GenAI WorksContact us2w Edited")).toBe("GenAI Works");
+    expect(cleanPersonLabel("Aakash Gupta Executive Top Voice Profile FollowingAakash Gupta")).toBe(
+      "Aakash Gupta"
+    );
   });
 
   it("extracts the author profile url when it is present in the post", () => {
@@ -342,6 +473,10 @@ describe("LinkedIn feed smoke extraction", () => {
       author_weight: "low",
       post_text: "Full organic text with a hidden ending.",
       posted_time: "4h",
+      comment_count: 56,
+      comment_count_text: "56 comments",
+      reaction_count: 1234,
+      reaction_count_text: "1,234 reactions",
     });
     expect(firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones")).toMatchObject({
       author: "Liz Fong-Jones",
@@ -411,6 +546,7 @@ describe("LinkedIn feed smoke extraction", () => {
       interested: 0,
       not_interested: 0,
       unknown: 0,
+      unresolved: 0,
     });
     expect(firstMerge.state.items[0].interest_validation.status).toBe(AI_STATUS.pending);
   });

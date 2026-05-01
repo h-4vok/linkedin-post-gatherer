@@ -42,6 +42,7 @@ function createEmptyAiQueueState() {
     totalChunks: 0,
     completedChunks: 0,
     currentChunkIndex: 0,
+    activeChunkFingerprints: [],
     lastMessage: null,
   };
 }
@@ -125,7 +126,11 @@ export function getSerializableState(tabId) {
     enrichedItems: tabState.enrichedItems.map(stripFingerprint),
     enrichment: { ...tabState.enrichment },
     aiCounts,
-    aiQueue: { ...tabState.aiQueue, pendingCount: aiCounts.pending },
+    aiQueue: {
+      ...tabState.aiQueue,
+      processedPosts: aiCounts.interested + aiCounts.not_interested,
+      pendingCount: aiCounts.pending,
+    },
   };
 }
 
@@ -304,6 +309,16 @@ export function getAiValidationEligibleItems(tabId) {
   return Array.from(getOrCreateTabState(tabId).itemsByFingerprint.values()).filter((item) =>
     [AI_STATUS.pending, AI_STATUS.unknown].includes(item?.interest_validation?.status)
   );
+}
+
+export function getAiValidationItemsByFingerprint(tabId, fingerprints = []) {
+  const itemsByFingerprint = getOrCreateTabState(tabId).itemsByFingerprint;
+
+  return fingerprints
+    .map((fingerprint) => itemsByFingerprint.get(fingerprint))
+    .filter((item) =>
+      [AI_STATUS.pending, AI_STATUS.unknown].includes(item?.interest_validation?.status)
+    );
 }
 
 export function resetAiValidationStatuses(tabId) {
@@ -560,6 +575,9 @@ function getAiCounts(items) {
         case AI_STATUS.unknown:
           counts.unknown += 1;
           break;
+        case AI_STATUS.unresolved:
+          counts.unresolved += 1;
+          break;
         default:
           counts.pending += 1;
           break;
@@ -572,6 +590,7 @@ function getAiCounts(items) {
       interested: 0,
       not_interested: 0,
       unknown: 0,
+      unresolved: 0,
     }
   );
 }

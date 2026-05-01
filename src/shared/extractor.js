@@ -8,6 +8,9 @@ const OVERFLOW_BUTTON_SELECTOR = 'button[aria-label*="Open control menu for post
 const FLOATING_MENU_SELECTOR = 'div[popover="manual"] [role="menu"]';
 const MENU_ITEM_SELECTOR = '[role="menuitem"]';
 const POST_TEXT_BLOCK_TAGS = new Set(["P", "DIV", "LI"]);
+const COMMENT_COUNT_PATTERN = /\b(comments?|comentarios?)\b/i;
+const REACTION_COUNT_PATTERN = /\b(reactions?|likes?|reacciones?|me gusta)\b/i;
+const SHARE_COUNT_PATTERN = /\b(reposts?|shares?|compartidos?)\b/i;
 
 export function normalizeWhitespace(value) {
   return String(value || "")
@@ -41,9 +44,15 @@ export function cleanPersonLabel(text) {
   let cleaned = normalizeWhitespace(text);
   cleaned = cleaned.replace(/\bOpen to work\b/gi, " ");
   cleaned = cleaned.replace(/\bHiring\b/gi, " ");
+  cleaned = cleaned.replace(/\bExecutive Top Voice\b/gi, " ");
+  cleaned = cleaned.replace(/\bTop Voice\b/gi, " ");
   cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
   cleaned = cleaned.replace(/\bPremium\b/gi, " ");
-  cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
+  cleaned = cleaned.replace(/Contact us/gi, " ");
+  cleaned = cleaned.replace(/\bFollow(?:ing)?\b|Follow(?:ing)?(?=[A-Z])/gi, " ");
+  cleaned = cleaned.replace(/\bProfile\b/gi, " ");
+  cleaned = cleaned.replace(/\s*\d+\s*(?:s|m|h|d|w|mo|y)\b(?:\s+Edited)?\s*$/i, " ");
+  cleaned = cleaned.replace(/\bEdited\b\s*$/gi, " ");
   cleaned = cleaned.replace(/[,:]+/g, " ");
   cleaned = cleaned.replace(/[•·]+/g, " ");
   cleaned = cleaned.replace(/â€¢|Ã¢â‚¬Â¢|Ã‚Â·/g, " ");
@@ -51,8 +60,23 @@ export function cleanPersonLabel(text) {
   cleaned = cleaned.replace(/[\u2022\u00B7]+/g, " ");
   cleaned = cleaned.replace(/\s+[\u2022\u00B7]+\s*$/g, " ");
   cleaned = normalizeWhitespace(cleaned);
+  cleaned = removeDuplicatedLabel(cleaned);
 
   return cleaned || null;
+}
+
+function removeDuplicatedLabel(text) {
+  const parts = normalizeWhitespace(text).split(" ");
+
+  if (parts.length % 2 !== 0) {
+    return text;
+  }
+
+  const midpoint = parts.length / 2;
+  const firstHalf = parts.slice(0, midpoint).join(" ");
+  const secondHalf = parts.slice(midpoint).join(" ");
+
+  return firstHalf.toLowerCase() === secondHalf.toLowerCase() ? firstHalf : text;
 }
 
 function hasRelationshipMarker(text) {
@@ -415,6 +439,151 @@ export function extractPostText(postElement) {
   return extractPostTextWithBreaks(textBox);
 }
 
+export function parseEngagementCount(text) {
+  const sourceText = normalizeWhitespace(text || "");
+
+  if (!sourceText) {
+    return { value: null, text: null };
+  }
+
+  if (/^(no|sin)\s+(comments?|comentarios?|reactions?|reacciones?)\b/i.test(sourceText)) {
+    return { value: 0, text: sourceText };
+  }
+
+  const numberMatch = sourceText.match(/\d+(?:[.,]\d+)?(?:[.,]\d{3})*/);
+
+  if (!numberMatch) {
+    return { value: null, text: sourceText };
+  }
+
+  const suffixMatch = sourceText
+    .slice(numberMatch.index + numberMatch[0].length)
+    .match(/^\s*(k|m|mil)\b/i);
+  const value = parseEngagementNumber(numberMatch[0], suffixMatch?.[1] || null);
+
+  return {
+    value,
+    text: sourceText,
+  };
+}
+
+function parseEngagementNumber(numberText, suffix) {
+  const rawNumber = String(numberText || "").trim();
+  const normalizedSuffix = String(suffix || "").toLowerCase();
+
+  if (!rawNumber) {
+    return null;
+  }
+
+  if (normalizedSuffix) {
+    const normalizedDecimal = rawNumber.includes(",")
+      ? rawNumber.replace(/\./g, "").replace(",", ".")
+      : rawNumber.replace(/,/g, "");
+    const base = Number.parseFloat(normalizedDecimal);
+
+    if (!Number.isFinite(base)) {
+      return null;
+    }
+
+    const multiplier = normalizedSuffix === "m" ? 1000000 : 1000;
+    return Math.round(base * multiplier);
+  }
+
+  if (/^\d+$/.test(rawNumber)) {
+    return Number.parseInt(rawNumber, 10);
+  }
+
+  if (/^\d{1,3}(,\d{3})+$/.test(rawNumber)) {
+    return Number.parseInt(rawNumber.replace(/,/g, ""), 10);
+  }
+
+  if (/^\d{1,3}(\.\d{3})+$/.test(rawNumber)) {
+    return Number.parseInt(rawNumber.replace(/\./g, ""), 10);
+  }
+
+  return null;
+}
+
+export function extractPostEngagement(postElement) {
+  const commentSource = findEngagementSource(postElement, COMMENT_COUNT_PATTERN);
+  const reactionSource = findEngagementSource(postElement, REACTION_COUNT_PATTERN);
+  const commentCount = parseEngagementCount(commentSource);
+  const reactionCount = parseEngagementCount(reactionSource);
+
+  return {
+    comment_count: commentCount.text ? commentCount.value : null,
+    comment_count_text: commentCount.text,
+    reaction_count: reactionCount.text ? reactionCount.value : null,
+    reaction_count_text: reactionCount.text,
+  };
+}
+
+function findEngagementSource(postElement, pattern) {
+  const candidates = Array.from(
+    postElement.querySelectorAll("button, span, li, a, div[aria-label], span[aria-label]")
+  );
+  let firstUnparseableSource = null;
+
+  for (const candidate of candidates) {
+    for (const source of getEngagementSourceTexts(candidate)) {
+      if (!isEngagementSource(source, pattern)) {
+        continue;
+      }
+
+      const parsed = parseEngagementCount(source);
+
+      if (typeof parsed.value === "number") {
+        return parsed.text;
+      }
+
+      if (shouldKeepUnparseableEngagementText(parsed.text)) {
+        firstUnparseableSource ||= parsed.text;
+      }
+    }
+  }
+
+  return firstUnparseableSource;
+}
+
+function getEngagementSourceTexts(element) {
+  const values = [
+    normalizeWhitespace(element.textContent || ""),
+    normalizeWhitespace(element.getAttribute("aria-label") || ""),
+  ].filter(Boolean);
+
+  return [...new Set(values)].filter((value) => value.length <= 120);
+}
+
+function isEngagementSource(text, pattern) {
+  return pattern.test(text) && !SHARE_COUNT_PATTERN.test(text) && !isEngagementControlText(text);
+}
+
+function isEngagementControlText(text) {
+  const normalized = normalizeWhitespace(text || "").toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (/^comment$|^like$|^react$/.test(normalized)) {
+    return true;
+  }
+
+  if (/^reaction button state:/.test(normalized)) {
+    return true;
+  }
+
+  if (/\b(get|add|write|leave|please)\s+(comments?|comentarios?)\b/.test(normalized)) {
+    return true;
+  }
+
+  return /\b(comment|vote)\s+(below|on|why)\b/.test(normalized);
+}
+
+function shouldKeepUnparseableEngagementText(text) {
+  return Boolean(text && !isEngagementControlText(text));
+}
+
 export function extractPostedTime(postElement) {
   const paragraphs = Array.from(postElement.querySelectorAll("p"));
 
@@ -503,6 +672,8 @@ export function buildNormalizedItem(
   now = new Date(),
   options = {}
 ) {
+  const engagement = extractPostEngagement(postElement);
+
   return {
     link: options.link || null,
     author,
@@ -513,6 +684,7 @@ export function buildNormalizedItem(
     is_repost: repostMetadata.is_repost,
     type: "organic",
     extracted_at: now.toISOString(),
+    ...engagement,
     author_role: null,
     author_followers: null,
     author_weight: "low",

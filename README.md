@@ -15,11 +15,11 @@ Chrome/Brave extension project for harvesting raw LinkedIn feed posts, filtering
 This repo is intentionally documented as a browser extension, not as a backend worker. The current phase focuses on user-triggered LinkedIn crawling, noise filtering, human-like scrolling, tab-scoped collection state, and final export. It does not send emails, post comments, or sync to external APIs.
 
 Collected post batches are scoped to the current browser tab/session. Persistent local storage is reserved for lightweight UI preferences such as the floating panel position.
-Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so repeated authors do not require opening their profile again on later runs.
+Author enrichment cache for BL-002 is persisted in `chrome.storage.local` only when at least one useful author signal is found, so empty transient resolutions can be retried on later runs.
 
 ## MVP Behavior
 
-- Extract `author`, `reposted_by`, `post_text`, `posted_time`, `link`, `is_repost`, `type`, and `extracted_at` from eligible feed posts
+- Extract `author`, `reposted_by`, `post_text`, `posted_time`, `link`, `is_repost`, `type`, `extracted_at`, and visible engagement snapshots from eligible feed posts
 - Read `post_text` from LinkedIn's preloaded expandable text box when present, without clicking `more`
 - Preserve LinkedIn's relative post age in `posted_time` when a clear value such as `4h` or `2w` is present
 - Start and stop crawling explicitly from the floating panel or popup instead of auto-collecting on feed load
@@ -33,8 +33,10 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` so rep
 - Run author enrichment and AI validation as separate manual passes from the LinkedIn panel, each with explicit `Run` and `Cancel` controls
 - Enrich author metadata with `author_role`, `author_followers`, and `author_weight`
 - Enriched exports may classify authors as `trivial` when enrichment does not find followers or a strong enough role signal to support a meaningful priority
+- Author enrichment skips cache writes when both role and followers are missing, logs that no cacheable signals were found, and retries that author in future enrichment runs
 - Optionally enrich each captured post with `interest_validation` using Gemini AI Studio
-- Run AI validation manually after capture in fixed chunks, with retry/backoff on quota and rate pressure
+- Run AI validation manually after capture in fixed sequential chunks, with retry/backoff on quota and rate pressure
+- Provider overload or other retryable failures that exhaust attempts are exported as `interest_validation.status: "unresolved"` instead of counted as a completed classification
 - The default AI validation prompt rejects posts whose dominant goal is sales, PR, upsell, demo booking, offers, lead generation, product or feature launches, or commercial CTAs
 - Custom Gemini prompts saved by the user are preserved; only the previous built-in default prompt migrates silently to the current default
 

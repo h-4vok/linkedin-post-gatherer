@@ -1,5 +1,4 @@
 import { AI_DEFAULT_CONFIG, AI_RATE_LIMIT, AI_STATUS, STORAGE_KEYS } from "../shared/constants.js";
-import { LEGACY_GEMINI_SYSTEM_INSTRUCTION } from "./default-system-instruction.js";
 
 const GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -36,20 +35,7 @@ function normalizeSystemInstruction(systemInstruction) {
     return AI_DEFAULT_CONFIG.systemInstruction;
   }
 
-  if (
-    normalizeInstructionForComparison(trimmedInstruction) ===
-    normalizeInstructionForComparison(LEGACY_GEMINI_SYSTEM_INSTRUCTION)
-  ) {
-    return AI_DEFAULT_CONFIG.systemInstruction;
-  }
-
   return trimmedInstruction;
-}
-
-function normalizeInstructionForComparison(systemInstruction) {
-  return String(systemInstruction || "")
-    .replace(/\r\n/g, "\n")
-    .trim();
 }
 
 export function getAiConfigError(config) {
@@ -129,13 +115,20 @@ export async function validatePostsInterestBulk(items, config, options = {}) {
   };
 }
 
-export function buildValidationResult(status, attempts, error = null) {
+export function buildValidationResult(status, attempts, error = null, options = {}) {
+  const retryAfterMs =
+    typeof options.retryAfterMs === "number" && Number.isFinite(options.retryAfterMs)
+      ? options.retryAfterMs
+      : null;
+
   return {
     status,
     source: "gemini",
     attempts,
     validated_at: new Date().toISOString(),
     error,
+    retry_after_ms: retryAfterMs,
+    retry_after_until: options.retryAfterUntil || null,
   };
 }
 
