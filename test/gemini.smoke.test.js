@@ -63,6 +63,11 @@ describe("gemini validation helpers", () => {
     expect(prompt).toContain("oferta");
     expect(prompt).toContain("lanzamiento");
     expect(prompt).toContain("cta");
+    expect(prompt).toContain("podcasts");
+    expect(prompt).toContain("summits");
+    expect(prompt).toContain("listen to the full episode");
+    expect(prompt).toContain("register here");
+    expect(prompt).toContain("download the report");
   });
 
   it("migrates the exact legacy default system instruction to the new default", () => {

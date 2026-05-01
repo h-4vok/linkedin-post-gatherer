@@ -44,9 +44,15 @@ export function cleanPersonLabel(text) {
   let cleaned = normalizeWhitespace(text);
   cleaned = cleaned.replace(/\bOpen to work\b/gi, " ");
   cleaned = cleaned.replace(/\bHiring\b/gi, " ");
+  cleaned = cleaned.replace(/\bExecutive Top Voice\b/gi, " ");
+  cleaned = cleaned.replace(/\bTop Voice\b/gi, " ");
   cleaned = cleaned.replace(/\bVerified Profile\b/gi, " ");
   cleaned = cleaned.replace(/\bPremium\b/gi, " ");
-  cleaned = cleaned.replace(/\bProfile\b\s*$/gi, " ");
+  cleaned = cleaned.replace(/Contact us/gi, " ");
+  cleaned = cleaned.replace(/\bFollow(?:ing)?\b|Follow(?:ing)?(?=[A-Z])/gi, " ");
+  cleaned = cleaned.replace(/\bProfile\b/gi, " ");
+  cleaned = cleaned.replace(/\s*\d+\s*(?:s|m|h|d|w|mo|y)\b(?:\s+Edited)?\s*$/i, " ");
+  cleaned = cleaned.replace(/\bEdited\b\s*$/gi, " ");
   cleaned = cleaned.replace(/[,:]+/g, " ");
   cleaned = cleaned.replace(/[•·]+/g, " ");
   cleaned = cleaned.replace(/â€¢|Ã¢â‚¬Â¢|Ã‚Â·/g, " ");
@@ -54,8 +60,23 @@ export function cleanPersonLabel(text) {
   cleaned = cleaned.replace(/[\u2022\u00B7]+/g, " ");
   cleaned = cleaned.replace(/\s+[\u2022\u00B7]+\s*$/g, " ");
   cleaned = normalizeWhitespace(cleaned);
+  cleaned = removeDuplicatedLabel(cleaned);
 
   return cleaned || null;
+}
+
+function removeDuplicatedLabel(text) {
+  const parts = normalizeWhitespace(text).split(" ");
+
+  if (parts.length % 2 !== 0) {
+    return text;
+  }
+
+  const midpoint = parts.length / 2;
+  const firstHalf = parts.slice(0, midpoint).join(" ");
+  const secondHalf = parts.slice(midpoint).join(" ");
+
+  return firstHalf.toLowerCase() === secondHalf.toLowerCase() ? firstHalf : text;
 }
 
 function hasRelationshipMarker(text) {
@@ -515,7 +536,9 @@ function findEngagementSource(postElement, pattern) {
         return parsed.text;
       }
 
-      firstUnparseableSource ||= parsed.text;
+      if (shouldKeepUnparseableEngagementText(parsed.text)) {
+        firstUnparseableSource ||= parsed.text;
+      }
     }
   }
 
@@ -532,7 +555,33 @@ function getEngagementSourceTexts(element) {
 }
 
 function isEngagementSource(text, pattern) {
-  return pattern.test(text) && !SHARE_COUNT_PATTERN.test(text);
+  return pattern.test(text) && !SHARE_COUNT_PATTERN.test(text) && !isEngagementControlText(text);
+}
+
+function isEngagementControlText(text) {
+  const normalized = normalizeWhitespace(text || "").toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (/^comment$|^like$|^react$/.test(normalized)) {
+    return true;
+  }
+
+  if (/^reaction button state:/.test(normalized)) {
+    return true;
+  }
+
+  if (/\b(get|add|write|leave|please)\s+(comments?|comentarios?)\b/.test(normalized)) {
+    return true;
+  }
+
+  return /\b(comment|vote)\s+(below|on|why)\b/.test(normalized);
+}
+
+function shouldKeepUnparseableEngagementText(text) {
+  return Boolean(text && !isEngagementControlText(text));
 }
 
 export function extractPostedTime(postElement) {

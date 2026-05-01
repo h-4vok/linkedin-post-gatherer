@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { readFileSync } from "node:fs";
 import {
   analyzePostElement,
+  cleanPersonLabel,
   extractAuthor,
   extractAuthorProfileUrl,
   extractPostEngagement,
@@ -249,6 +250,28 @@ describe("LinkedIn feed smoke extraction", () => {
     });
   });
 
+  it("ignores engagement action buttons that are not count evidence", () => {
+    const document = new JSDOM(
+      `
+        <div role="listitem">
+          <button aria-label="Reaction button state: no reaction">Like</button>
+          <button>Comment</button>
+          <p>Vote below and comment on WHY you chose that.</p>
+        </div>
+      `,
+      {
+        url: "https://www.linkedin.com/feed/",
+      }
+    ).window.document;
+
+    expect(extractPostEngagement(document.querySelector('[role="listitem"]'))).toEqual({
+      comment_count: null,
+      comment_count_text: null,
+      reaction_count: null,
+      reaction_count_text: null,
+    });
+  });
+
   it("keeps text evidence when engagement text cannot be parsed", () => {
     const document = new JSDOM(
       `
@@ -332,6 +355,16 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[8])).toBe("Liz Fong-Jones");
     expect(extractAuthor(posts[10])).toBe("Patty Fonacier");
     expect(extractAuthor(posts[11])).toBe("Muhammad Haseeb");
+  });
+
+  it("cleans author labels polluted by LinkedIn badges and timestamps", () => {
+    expect(cleanPersonLabel("Risk Ledger1d Edited")).toBe("Risk Ledger");
+    expect(cleanPersonLabel("ComplyAdvantage4d Edited")).toBe("ComplyAdvantage");
+    expect(cleanPersonLabel("Aaron Levie Executive Top Voice")).toBe("Aaron Levie");
+    expect(cleanPersonLabel("GenAI WorksContact us2w Edited")).toBe("GenAI Works");
+    expect(cleanPersonLabel("Aakash Gupta Executive Top Voice Profile FollowingAakash Gupta")).toBe(
+      "Aakash Gupta"
+    );
   });
 
   it("extracts the author profile url when it is present in the post", () => {
