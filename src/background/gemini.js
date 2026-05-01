@@ -1,5 +1,8 @@
 import { AI_DEFAULT_CONFIG, AI_RATE_LIMIT, AI_STATUS, STORAGE_KEYS } from "../shared/constants.js";
-import { LEGACY_GEMINI_SYSTEM_INSTRUCTION } from "./default-system-instruction.js";
+import {
+  LEGACY_GEMINI_SYSTEM_INSTRUCTION,
+  PREVIOUS_DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
+} from "./default-system-instruction.js";
 
 const GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -36,14 +39,24 @@ function normalizeSystemInstruction(systemInstruction) {
     return AI_DEFAULT_CONFIG.systemInstruction;
   }
 
-  if (
-    normalizeInstructionForComparison(trimmedInstruction) ===
-    normalizeInstructionForComparison(LEGACY_GEMINI_SYSTEM_INSTRUCTION)
-  ) {
+  if (isMigratableDefaultInstruction(trimmedInstruction)) {
     return AI_DEFAULT_CONFIG.systemInstruction;
   }
 
   return trimmedInstruction;
+}
+
+function isMigratableDefaultInstruction(systemInstruction) {
+  const normalizedInstruction = normalizeInstructionForComparison(systemInstruction);
+  const migratableDefaults = [
+    LEGACY_GEMINI_SYSTEM_INSTRUCTION,
+    PREVIOUS_DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
+  ];
+
+  return migratableDefaults.some(
+    (defaultInstruction) =>
+      normalizedInstruction === normalizeInstructionForComparison(defaultInstruction)
+  );
 }
 
 function normalizeInstructionForComparison(systemInstruction) {
