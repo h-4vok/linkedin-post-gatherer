@@ -843,6 +843,28 @@ import {
     });
   }
 
+  function extractKnownRelationshipMarker(text) {
+    const normalized = normalizeWhitespace(text || "");
+
+    if (!normalized) {
+      return null;
+    }
+
+    for (const marker of RELATIONSHIP_MARKERS) {
+      const markerPattern = new RegExp(
+        `(?:^|[\\s\\u2022\\u00B7\\-])(${escapeRegExp(marker)})(?=\\s|$)`,
+        "i"
+      );
+      const match = normalized.match(markerPattern);
+
+      if (match?.[1]) {
+        return marker;
+      }
+    }
+
+    return null;
+  }
+
   function normalizePersonKey(value) {
     return normalizeWhitespace(value || "").toLowerCase();
   }
@@ -1126,6 +1148,151 @@ import {
     return null;
   }
 
+  function getUniqueElements(elements) {
+    const seen = new Set();
+    const uniqueElements = [];
+
+    for (const element of elements || []) {
+      if (!element || seen.has(element)) {
+        continue;
+      }
+
+      seen.add(element);
+      uniqueElements.push(element);
+    }
+
+    return uniqueElements;
+  }
+
+  function collectAuthorIdentityElements(postElement, author) {
+    const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
+
+    if (!normalizedAuthor) {
+      return [];
+    }
+
+    return getUniqueElements(
+      Array.from(
+        postElement.querySelectorAll('[aria-label], a[href*="/in/"], a[href*="/company/"]')
+      )
+        .concat(Array.from(postElement.querySelectorAll("span, p, div")))
+        .filter(function (element) {
+          const text = normalizeWhitespace(
+            [element.textContent || "", element.getAttribute?.("aria-label") || ""].join(" ")
+          ).toLowerCase();
+
+          return text.includes(normalizedAuthor);
+        })
+    );
+  }
+
+  function collectIdentityContextElements(postElement, identityElement) {
+    const contextElements = [identityElement];
+    let current = identityElement.parentElement;
+    let depth = 0;
+
+    while (current && current !== postElement && depth < 3) {
+      const text = normalizeWhitespace(current.textContent || "");
+
+      if (text && text.length <= 240) {
+        contextElements.push(current);
+      }
+
+      current = current.parentElement;
+      depth += 1;
+    }
+
+    return getUniqueElements(contextElements);
+  }
+
+  function getElementSourceTexts(element) {
+    return [
+      ...new Set(
+        [
+          normalizeWhitespace(element?.textContent || ""),
+          normalizeWhitespace(element?.getAttribute?.("aria-label") || ""),
+        ].filter(Boolean)
+      ),
+    ];
+  }
+
+  function isIgnoredNetworkProximityLabel(text, author) {
+    const normalized = normalizeWhitespace(text || "");
+    const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
+
+    if (!normalized) {
+      return true;
+    }
+
+    if (normalizedAuthor && normalized.toLowerCase().includes(normalizedAuthor)) {
+      return true;
+    }
+
+    if (normalized.length > 40 || normalized.split(/\s+/).length > 4) {
+      return true;
+    }
+
+    if (POSTED_TIME_PATTERN.test(normalized) || /^edited$/i.test(normalized)) {
+      return true;
+    }
+
+    if (
+      /^(open to work|hiring|executive top voice|top voice|verified profile|premium|profile)$/i.test(
+        normalized
+      )
+    ) {
+      return true;
+    }
+
+    return /^(likes this|loves this|supports this|found this insightful|reposted this|reposted|shared this|shared)$/i.test(
+      normalized
+    );
+  }
+
+  function extractFallbackNetworkProximity(postElement, author) {
+    const labels = new Set();
+
+    for (const identityElement of collectAuthorIdentityElements(postElement, author)) {
+      for (const contextElement of collectIdentityContextElements(postElement, identityElement)) {
+        const candidates = Array.from(contextElement.querySelectorAll("span, p, div, a"));
+
+        for (const candidate of candidates) {
+          for (const text of getElementSourceTexts(candidate)) {
+            if (isIgnoredNetworkProximityLabel(text, author)) {
+              continue;
+            }
+
+            labels.add(text);
+          }
+        }
+      }
+    }
+
+    return labels.size === 1 ? [...labels][0] : null;
+  }
+
+  function extractAuthorNetworkProximity(postElement, author) {
+    const normalizedAuthor = normalizeWhitespace(author || "").toLowerCase();
+
+    if (!normalizedAuthor) {
+      return null;
+    }
+
+    for (const identityElement of collectAuthorIdentityElements(postElement, author)) {
+      for (const contextElement of collectIdentityContextElements(postElement, identityElement)) {
+        for (const text of getElementSourceTexts(contextElement)) {
+          const marker = extractKnownRelationshipMarker(text);
+
+          if (marker) {
+            return marker;
+          }
+        }
+      }
+    }
+
+    return extractFallbackNetworkProximity(postElement, author);
+  }
+
   function extractLeadingSocialSignal(postElement, author) {
     const normalizedAuthor = normalizeWhitespace(author || "");
 
@@ -1290,6 +1457,7 @@ import {
       link: null,
       author: author,
       author_profile_url: extractAuthorProfileUrl(postElement, author),
+      author_network_proximity: extractAuthorNetworkProximity(postElement, author),
       reposted_by: repostMetadata.reposted_by,
       post_text: extractPostText(postElement),
       posted_time: extractPostedTime(postElement),

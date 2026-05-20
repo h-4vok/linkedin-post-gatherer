@@ -12,6 +12,7 @@ describe("export helpers", () => {
       toRawExportItem({
         link: "https://example.com/post/1",
         author: "Ada Lovelace",
+        author_network_proximity: "1st",
         post_text: "Hello",
         posted_time: "4h",
         is_repost: false,
@@ -25,6 +26,7 @@ describe("export helpers", () => {
     ]);
 
     expect(json).toContain('"link": "https://example.com/post/1"');
+    expect(json).toContain('"author_network_proximity": "1st"');
     expect(json).toContain('"is_repost": false');
     expect(json).toContain('"comment_count": 12');
     expect(json).toContain('"reaction_count_text": "1.2K reactions"');
@@ -34,6 +36,7 @@ describe("export helpers", () => {
     const json = serializeExportItems([
       toEnrichedExportItem({
         author: "Ada Lovelace",
+        author_network_proximity: "Following",
         author_role: "Engineer",
         author_followers: 1200,
         author_weight: "high",
@@ -45,6 +48,7 @@ describe("export helpers", () => {
     ]);
 
     expect(json).toContain('"author_role": "Engineer"');
+    expect(json).toContain('"author_network_proximity": "Following"');
     expect(json).toContain('"author_followers": 1200');
     expect(json).toContain('"author_weight": "high"');
     expect(json).toContain('"comment_count": 3');
@@ -53,6 +57,7 @@ describe("export helpers", () => {
 
   it("serializes legacy engagement fields as null", () => {
     expect(toRawExportItem({ author: "Ada Lovelace" })).toMatchObject({
+      author_network_proximity: null,
       comment_count: null,
       comment_count_text: null,
       reaction_count: null,

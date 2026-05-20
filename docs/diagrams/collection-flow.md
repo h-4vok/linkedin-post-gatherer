@@ -9,8 +9,8 @@ flowchart TD
     E --> F[Inspect post container]
     F --> G{Promoted, poll, or suggested?}
     G -->|Yes| H[Skip container]
-    G -->|No| I[Extract raw fields]
-    I --> J[Normalize item shape]
+    G -->|No| I[Extract raw fields<br/>including author proximity]
+    I --> J[Normalize item shape<br/>with author_network_proximity]
     J --> K[Deduplicate and store locally]
     J --> K2[Capture ignored sample buffer]
     K --> L{Optional manual pass}
@@ -50,4 +50,5 @@ flowchart TD
 - Author enrichment is sequential, preserves partial progress on cancellation, skips cache writes for authors without useful role or follower signals, and the latest download composes that snapshot with the latest AI validation overlay.
 - Enriched author classification may end in `trivial` when enrichment cannot find followers or a strong enough role signal; `low` is reserved for authors with real but weak follower evidence.
 - Non-organic feed items are excluded before they enter normalized storage.
+- The normalized raw field set always includes `author_network_proximity`, using the visible author label when LinkedIn exposes one and `null` otherwise.
 - Gemini validation runs after capture, uses fixed-size sequential chunks, blocks later chunks during backoff, and may leave retryable provider failures as `unresolved` when attempts are exhausted.

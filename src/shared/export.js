@@ -3,6 +3,7 @@ function pickExportFields(item) {
     link: item?.link || null,
     author: item?.author || null,
     author_profile_url: item?.author_profile_url || null,
+    author_network_proximity: item?.author_network_proximity || null,
     reposted_by: item?.reposted_by || null,
     post_text: item?.post_text || null,
     posted_time: item?.posted_time || null,

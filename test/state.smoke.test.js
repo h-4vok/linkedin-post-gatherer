@@ -3,6 +3,7 @@ import {
   appendIgnoredSamples,
   getAiValidationEligibleItems,
   getLatestResultItems,
+  mergeNewItems,
   getSerializableState,
   hydrateStateFromStorage,
   resetAiValidationStatuses,
@@ -272,6 +273,27 @@ describe("tab state debug samples", () => {
     });
   });
 
+  it("preserves author_network_proximity through merge and snapshots", async () => {
+    mockChromeStorage();
+
+    const mergeResult = mergeNewItems(57, [
+      {
+        fingerprint: "fp-proximity",
+        author: "Ada",
+        extracted_at: "2026-03-30T10:00:00.000Z",
+        author_network_proximity: "1st",
+      },
+    ]);
+
+    expect(mergeResult.addedCount).toBe(1);
+    expect(mergeResult.state.items[0]).toMatchObject({
+      author_network_proximity: "1st",
+    });
+    expect(getLatestResultItems(57).items[0]).toMatchObject({
+      author_network_proximity: "1st",
+    });
+  });
+
   it("counts unresolved separately and excludes it from classified progress", async () => {
     mockChromeStorage();
 
@@ -334,6 +356,7 @@ describe("tab state debug samples", () => {
             author: "Ada",
             extracted_at: "2026-03-30T10:00:00.000Z",
             author_profile_url: "https://www.linkedin.com/in/ada/",
+            author_network_proximity: "2nd",
             interest_validation: {
               status: "interested",
               attempts: 1,
@@ -360,6 +383,7 @@ describe("tab state debug samples", () => {
           author: "Ada",
           extracted_at: "2026-03-30T10:00:00.000Z",
           author_profile_url: "https://www.linkedin.com/in/ada/",
+          author_network_proximity: "2nd",
           author_role: "Engineer",
           author_followers: 1200,
           author_weight: "low",
@@ -379,6 +403,7 @@ describe("tab state debug samples", () => {
     expect(latest.mode).toBe("enriched");
     expect(latest.items).toHaveLength(1);
     expect(latest.items[0]).toMatchObject({
+      author_network_proximity: "2nd",
       author_role: "Engineer",
       author_followers: 1200,
       author_weight: "low",
