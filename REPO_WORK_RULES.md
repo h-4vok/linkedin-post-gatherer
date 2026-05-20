@@ -88,6 +88,7 @@ The repo gate is enforced as a pre-push check through `npm run prepush`.
 - Each exported item should preserve the normalized MVP contract:
   - `link`
   - `author`
+  - `author_network_proximity`
   - `reposted_by`
   - `post_text`
   - `posted_time`

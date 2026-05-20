@@ -18,6 +18,7 @@ Este documento define el contrato del JSON exportado por la extensión para comp
     "link": "https://www.linkedin.com/feed/update/...",
     "author": "Nombre Apellido",
     "author_profile_url": "https://www.linkedin.com/in/...",
+    "author_network_proximity": "1st",
     "reposted_by": null,
     "post_text": "Texto del post...",
     "posted_time": "4h",
@@ -43,22 +44,23 @@ Este documento define el contrato del JSON exportado por la extensión para comp
 
 ## Campos base (Raw y Enriched)
 
-| Campo                 | Tipo                | Nullable | Descripción                                     |
-| --------------------- | ------------------- | -------- | ----------------------------------------------- |
-| `link`                | `string`            | Sí       | URL del post.                                   |
-| `author`              | `string`            | Sí       | Autor del post (normalizado por extractor).     |
-| `author_profile_url`  | `string`            | Sí       | URL de perfil del autor (`/in/` o `/company/`). |
-| `reposted_by`         | `string`            | Sí       | Actor que reposteó/shared, si aplica.           |
-| `post_text`           | `string`            | Sí       | Texto del post extraído del bloque expandible.  |
-| `posted_time`         | `string`            | Sí       | Tiempo relativo de LinkedIn (ej. `4h`, `2w`).   |
-| `is_repost`           | `boolean`           | No       | Marca si es repost/share detectado.             |
-| `type`                | `string`            | No       | Tipo de post. En MVP: `"organic"`.              |
-| `extracted_at`        | `string` (ISO-8601) | Sí       | Timestamp de extracción.                        |
-| `comment_count`       | `number`            | Sí       | Conteo parseado de comentarios.                 |
-| `comment_count_text`  | `string`            | Sí       | Texto original de comentarios detectado en UI.  |
-| `reaction_count`      | `number`            | Sí       | Conteo parseado de reacciones.                  |
-| `reaction_count_text` | `string`            | Sí       | Texto original de reacciones detectado en UI.   |
-| `interest_validation` | `object`            | Sí       | Resultado de validación AI por item.            |
+| Campo                      | Tipo                | Nullable | Descripción                                        |
+| -------------------------- | ------------------- | -------- | -------------------------------------------------- |
+| `link`                     | `string`            | Sí       | URL del post.                                      |
+| `author`                   | `string`            | Sí       | Autor del post (normalizado por extractor).        |
+| `author_profile_url`       | `string`            | Sí       | URL de perfil del autor (`/in/` o `/company/`).    |
+| `author_network_proximity` | `string`            | Sí       | Etiqueta visible de proximidad del autor o `null`. |
+| `reposted_by`              | `string`            | Sí       | Actor que reposteó/shared, si aplica.              |
+| `post_text`                | `string`            | Sí       | Texto del post extraído del bloque expandible.     |
+| `posted_time`              | `string`            | Sí       | Tiempo relativo de LinkedIn (ej. `4h`, `2w`).      |
+| `is_repost`                | `boolean`           | No       | Marca si es repost/share detectado.                |
+| `type`                     | `string`            | No       | Tipo de post. En MVP: `"organic"`.                 |
+| `extracted_at`             | `string` (ISO-8601) | Sí       | Timestamp de extracción.                           |
+| `comment_count`            | `number`            | Sí       | Conteo parseado de comentarios.                    |
+| `comment_count_text`       | `string`            | Sí       | Texto original de comentarios detectado en UI.     |
+| `reaction_count`           | `number`            | Sí       | Conteo parseado de reacciones.                     |
+| `reaction_count_text`      | `string`            | Sí       | Texto original de reacciones detectado en UI.      |
+| `interest_validation`      | `object`            | Sí       | Resultado de validación AI por item.               |
 
 ## Campos adicionales de Enriched
 
@@ -89,6 +91,7 @@ Cuando está presente, su contrato es:
 - Export serializa únicamente arrays de items, sin wrapper de objeto (`src/shared/export.js:33`).
 - `is_repost` siempre se fuerza a booleano en export (`src/shared/export.js:9`).
 - `type` cae a `"organic"` si falta (`src/shared/export.js:10`).
+- `author_network_proximity` siempre se exporta y conserva la etiqueta visible del autor o `null` si no puede resolverse con claridad.
 - Enriched agrega `author_weight`; si no hay datos, puede quedar `"trivial"` (`src/shared/export.js:29`, `src/shared/author-weight.js:124`).
 - En `buildNormalizedItem`, el valor inicial de `author_weight` es `"low"`; enrichment puede recalcularlo (`src/shared/extractor.js:690`, `src/shared/author-weight.js:100`).
 - `interest_validation` puede venir `null` en export, aunque el estado interno inicial lo crea como `pending` (`src/shared/export.js:16`, `src/shared/state.js:555`).
@@ -115,6 +118,7 @@ Orden de decisión (`src/shared/author-weight.js:100`):
     "link": "https://www.linkedin.com/feed/update/urn:li:activity:123",
     "author": "Ada Lovelace",
     "author_profile_url": "https://www.linkedin.com/in/ada-lovelace",
+    "author_network_proximity": null,
     "reposted_by": null,
     "post_text": "Post de ejemplo",
     "posted_time": "4h",
@@ -138,6 +142,7 @@ Orden de decisión (`src/shared/author-weight.js:100`):
     "link": "https://www.linkedin.com/feed/update/urn:li:activity:123",
     "author": "Ada Lovelace",
     "author_profile_url": "https://www.linkedin.com/in/ada-lovelace",
+    "author_network_proximity": "Following",
     "reposted_by": null,
     "post_text": "Post de ejemplo",
     "posted_time": "4h",

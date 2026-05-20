@@ -19,7 +19,7 @@ Author enrichment cache for BL-002 is persisted in `chrome.storage.local` only w
 
 ## MVP Behavior
 
-- Extract `author`, `reposted_by`, `post_text`, `posted_time`, `link`, `is_repost`, `type`, `extracted_at`, and visible engagement snapshots from eligible feed posts
+- Extract `author`, `author_network_proximity`, `reposted_by`, `post_text`, `posted_time`, `link`, `is_repost`, `type`, `extracted_at`, and visible engagement snapshots from eligible feed posts
 - Read `post_text` from LinkedIn's preloaded expandable text box when present, without clicking `more`
 - Preserve LinkedIn's relative post age in `posted_time` when a clear value such as `4h` or `2w` is present
 - Start and stop crawling explicitly from the floating panel or popup instead of auto-collecting on feed load

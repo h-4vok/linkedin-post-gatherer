@@ -5,6 +5,7 @@ import {
   analyzePostElement,
   cleanPersonLabel,
   extractAuthor,
+  extractAuthorNetworkProximity,
   extractAuthorProfileUrl,
   extractPostEngagement,
   extractPostedTime,
@@ -156,6 +157,21 @@ const FEED_FIXTURE = `
         <p>15h •</p>
       </div>
       <span data-testid="expandable-text-box">Author should come from paragraph marker.</span>
+    </div>
+    <div role="listitem" data-post-id="future-proximity">
+      <div>
+        <a href="https://www.linkedin.com/in/sofia-chen/">Sofia Chen</a>
+        <span>Teammate</span>
+        <p>2h â€¢</p>
+      </div>
+      <span data-testid="expandable-text-box">Future proximity labels should be preserved.</span>
+    </div>
+    <div role="listitem" data-post-id="no-proximity">
+      <div>
+        <a href="https://www.linkedin.com/in/noah-kim/">Noah Kim</a>
+        <p>1d â€¢</p>
+      </div>
+      <span data-testid="expandable-text-box">No visible proximity signal here.</span>
     </div>
   </div>
   <div popover="manual">
@@ -318,7 +334,7 @@ describe("LinkedIn feed smoke extraction", () => {
     const container = findFeedContainer(document);
 
     expect(container).not.toBeNull();
-    expect(findPostElements(container)).toHaveLength(12);
+    expect(findPostElements(container)).toHaveLength(14);
   });
 
   it("filters promoted content", () => {
@@ -355,6 +371,20 @@ describe("LinkedIn feed smoke extraction", () => {
     expect(extractAuthor(posts[8])).toBe("Liz Fong-Jones");
     expect(extractAuthor(posts[10])).toBe("Patty Fonacier");
     expect(extractAuthor(posts[11])).toBe("Muhammad Haseeb");
+    expect(extractAuthor(posts[12])).toBe("Sofia Chen");
+    expect(extractAuthor(posts[13])).toBe("Noah Kim");
+  });
+
+  it("extracts author network proximity and preserves future labels", () => {
+    const document = setupDocument();
+    const posts = findPostElements(findFeedContainer(document));
+
+    expect(extractAuthorNetworkProximity(posts[0], extractAuthor(posts[0]))).toBe("1st");
+    expect(extractAuthorNetworkProximity(posts[2], extractAuthor(posts[2]))).toBe("3rd+");
+    expect(extractAuthorNetworkProximity(posts[4], extractAuthor(posts[4]))).toBe("Following");
+    expect(extractAuthorNetworkProximity(posts[5], "Liz Fong-Jones")).toBe("3rd+");
+    expect(extractAuthorNetworkProximity(posts[12], extractAuthor(posts[12]))).toBe("Teammate");
+    expect(extractAuthorNetworkProximity(posts[13], extractAuthor(posts[13]))).toBeNull();
   });
 
   it("cleans author labels polluted by LinkedIn badges and timestamps", () => {
@@ -462,12 +492,13 @@ describe("LinkedIn feed smoke extraction", () => {
     });
     const secondPass = scanFeedPosts(container, { processedElements });
 
-    expect(firstPass.acceptedItems).toHaveLength(10);
+    expect(firstPass.acceptedItems).toHaveLength(12);
     expect(firstPass.skippedItems).toContain("promoted");
     expect(firstPass.skippedItems).toContain("missing-author");
     expect(firstPass.acceptedItems[0]).toMatchObject({
       author: "Gonzalo Corbijn",
       author_profile_url: "https://www.linkedin.com/in/gonzalo-corbijn/",
+      author_network_proximity: "1st",
       author_role: null,
       author_followers: null,
       author_weight: "low",
@@ -480,6 +511,7 @@ describe("LinkedIn feed smoke extraction", () => {
     });
     expect(firstPass.acceptedItems.find((item) => item.author === "Liz Fong-Jones")).toMatchObject({
       author: "Liz Fong-Jones",
+      author_network_proximity: "3rd+",
       is_repost: true,
       reposted_by: "Charity Majors",
     });
@@ -487,15 +519,18 @@ describe("LinkedIn feed smoke extraction", () => {
       firstPass.acceptedItems.find((item) => item.post_text === "Should be skipped as suggested.")
     ).toMatchObject({
       author: "Muhammad Haseeb",
+      author_network_proximity: "3rd+",
       post_text: "Should be skipped as suggested.",
     });
     expect(firstPass.acceptedItems.find((item) => item.author === "Cruz Gamboa")).toMatchObject({
       author: "Cruz Gamboa",
+      author_network_proximity: "3rd+",
       is_repost: false,
       reposted_by: null,
     });
     expect(firstPass.acceptedItems.find((item) => item.author === "Maarten Dalmijn")).toMatchObject(
       {
+        author_network_proximity: "2nd",
         is_repost: false,
         reposted_by: null,
       }
@@ -511,11 +546,13 @@ describe("LinkedIn feed smoke extraction", () => {
       )
     ).toMatchObject({
       author: "Liz Fong-Jones",
+      author_network_proximity: "3rd+",
       is_repost: true,
       reposted_by: "Rob Sandberg",
     });
     expect(firstPass.acceptedItems.find((item) => item.author === "Patty Fonacier")).toMatchObject({
       author: "Patty Fonacier",
+      author_network_proximity: "1st",
       post_text: "Author should come from aria-label.",
     });
     expect(
@@ -524,6 +561,21 @@ describe("LinkedIn feed smoke extraction", () => {
       )
     ).toMatchObject({
       author: "Muhammad Haseeb",
+      author_network_proximity: "3rd+",
+    });
+    expect(
+      firstPass.acceptedItems.find(
+        (item) => item.post_text === "Future proximity labels should be preserved."
+      )
+    ).toMatchObject({
+      author: "Sofia Chen",
+      author_network_proximity: "Teammate",
+    });
+    expect(
+      firstPass.acceptedItems.find((item) => item.post_text === "No visible proximity signal here.")
+    ).toMatchObject({
+      author: "Noah Kim",
+      author_network_proximity: null,
     });
     expect(secondPass.acceptedItems).toHaveLength(0);
   });
@@ -539,10 +591,10 @@ describe("LinkedIn feed smoke extraction", () => {
     const firstMerge = mergeNewItems(101, acceptedItems);
     const secondMerge = mergeNewItems(101, acceptedItems);
 
-    expect(firstMerge.addedCount).toBe(10);
+    expect(firstMerge.addedCount).toBe(12);
     expect(secondMerge.addedCount).toBe(0);
     expect(getSerializableState(101).aiCounts).toEqual({
-      pending: 10,
+      pending: 12,
       interested: 0,
       not_interested: 0,
       unknown: 0,
