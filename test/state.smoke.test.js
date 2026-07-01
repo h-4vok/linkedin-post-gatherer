@@ -9,6 +9,7 @@ import {
   resetAiValidationStatuses,
   resetDebugState,
   setAiQueueState,
+  setFullRunState,
   startEnrichment,
   syncEnrichedItems,
   updateInterestValidationBatch,
@@ -410,6 +411,39 @@ describe("tab state debug samples", () => {
     });
     expect(latest.items[0].interest_validation).toMatchObject({
       status: "interested",
+    });
+  });
+
+  it("persists full-run orchestration status with tab state", async () => {
+    mockChromeStorage();
+
+    await resetDebugState(58);
+    await setFullRunState(58, {
+      status: "running",
+      stage: "enrichment",
+      startedAt: "2026-07-01T10:00:00.000Z",
+      updatedAt: "2026-07-01T10:01:00.000Z",
+      lastMessage: "Run Full running enrichment.",
+    });
+
+    const state = getSerializableState(58);
+    expect(state.fullRun).toMatchObject({
+      status: "running",
+      stage: "enrichment",
+      startedAt: "2026-07-01T10:00:00.000Z",
+      updatedAt: "2026-07-01T10:01:00.000Z",
+      lastMessage: "Run Full running enrichment.",
+    });
+
+    globalThis.chrome.storage.session.get.mockResolvedValue({
+      "collector.tab.58": state,
+    });
+    await hydrateStateFromStorage(58);
+
+    expect(getSerializableState(58).fullRun).toMatchObject({
+      status: "running",
+      stage: "enrichment",
+      lastMessage: "Run Full running enrichment.",
     });
   });
 });

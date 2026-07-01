@@ -71,7 +71,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 4. Between scrolls, the collector waits a randomized delay of `1.5s` to `3.5s`.
 5. For each discovered post container, exclusion rules remove promoted posts, polls, and suggested content.
 6. Extracted post data is normalized into a stable internal structure and sent through an explicit message contract to background logic.
-7. Background logic deduplicates and stores intermediate collection state, then optionally runs Gemini AI Studio validation as a manual post-capture bulk job in fixed chunks.
+7. Background logic deduplicates and stores intermediate collection state, then optionally runs author enrichment and Gemini AI Studio validation either as manual post-capture passes or through the `Run Full` sequence.
 8. The floating panel and popup receive progress updates in the form `Posts identified: X / target`, while the popup also shows AI validation and author-enrichment status.
 9. When requested, export logic produces `linkedin_crawl_result_[yyyymmdd-hhmmss].json` from the latest stable snapshot: raw, enriched, raw+AI, or enriched+AI.
 
@@ -106,6 +106,7 @@ This repo currently targets `Manifest V3`, `JavaScript` vanilla, and `Vite`. The
 - AI validation may also persist an `interest_validation` block on each item for raw and enriched export flows.
 - Retryable Gemini failures that exhaust attempts should use `interest_validation.status = "unresolved"` with retry metadata instead of being counted as completed `unknown` classifications.
 - Author enrichment and AI validation are separate sequential passes. They share the same tab-scoped dataset and the final download composes the latest enrichment snapshot with the latest AI validation overlay.
+- `Run Full` is a background-orchestrated sequence over the existing `Start`, author enrichment, and AI validation stages. It stops before enrichment when collection captures zero posts, pauses on `Stop`, resumes from the current stage, and never triggers export automatically.
 - The requirements file contains the typo `is_repot`; the documented repository contract should use `is_repost`.
 - `type` should remain compatible with the current MVP expectation of organic content that passed the exclusion filters.
 - `post_text` should prefer the preloaded LinkedIn expandable text node so long posts can be captured without triggering UI expansion.

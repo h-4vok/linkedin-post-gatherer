@@ -44,6 +44,8 @@ describe("floating panel helpers", () => {
     expect(markup).toContain("harvester-enrichment-cancel");
     expect(markup).toContain("harvester-ai-run");
     expect(markup).toContain("harvester-ai-cancel");
+    expect(markup).toContain("harvester-full-run");
+    expect(markup).toContain("Run Full");
     expect(markup).toContain("harvester-start");
     expect(markup).toContain("harvester-stop");
     expect(markup).toContain("harvester-enrichment-status");

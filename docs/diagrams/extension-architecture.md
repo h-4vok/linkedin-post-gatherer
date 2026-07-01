@@ -13,14 +13,14 @@ flowchart LR
 
     LI --> CS
     LP --> CS
-    UI -->|start collection| BG
+    UI -->|start / run full| BG
     UI -->|AI config| ST
     BG -->|start / stop / status| CS
     CS -->|filtered post data| BG
     UI -->|raw or enriched export| BG
     UI -->|ignored debug preview| BG
     BG -->|profile extract request| CS
-    UI -->|manual AI validation start| BG
+    UI -->|manual AI / full AI start| BG
     BG -->|chunked bulk AI validation| GS
     BG --> ST
     BG -->|progress count| UI
