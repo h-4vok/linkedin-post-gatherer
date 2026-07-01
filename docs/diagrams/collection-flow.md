@@ -2,7 +2,11 @@
 
 ```mermaid
 flowchart TD
-    A[User clicks Start Hunting] --> B[Read capture limit<br/>default 50]
+    A0[User chooses panel action] --> A{Mode}
+    A -->|Manual Start| B[Read capture limit<br/>default 50]
+    A -->|Run Full| BF[Start full-run sequence]
+    BF --> B
+    BF -. no posts .-> L0[Stop full run and notify]
     B --> C[Scan LinkedIn feed]
     C --> D[Scroll 400px to 600px]
     D --> E[Wait 1.5s to 3.5s]
@@ -13,8 +17,9 @@ flowchart TD
     I --> J[Normalize item shape<br/>with author_network_proximity]
     J --> K[Deduplicate and store locally]
     J --> K2[Capture ignored sample buffer]
-    K --> L{Optional manual pass}
+    K --> L{Next pass}
     L -->|Run enrichment| M[Resolve unique authors]
+    L -->|Run Full after capture| M
     M --> N[Reuse local author cache]
     N --> O[Open one LinkedIn profile tab at a time]
     O --> P[Extract role and followers]
@@ -47,6 +52,7 @@ flowchart TD
 - Failures in extraction should be observable and should not corrupt stored results.
 - Export is local-only in the current phase.
 - The LinkedIn panel downloads the latest stable result snapshot and disables download while the crawler, enrichment, or AI validation is running.
+- `Run Full` chains Start, enrichment, and AI validation through background orchestration, pauses on `Stop`, resumes from the current stage, and does not download automatically.
 - Author enrichment is sequential, preserves partial progress on cancellation, skips cache writes for authors without useful role or follower signals, and the latest download composes that snapshot with the latest AI validation overlay.
 - Enriched author classification may end in `trivial` when enrichment cannot find followers or a strong enough role signal; `low` is reserved for authors with real but weak follower evidence.
 - Non-organic feed items are excluded before they enter normalized storage.

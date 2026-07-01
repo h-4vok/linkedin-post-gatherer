@@ -3,6 +3,8 @@ import {
   AI_RATE_LIMIT,
   AI_STATUS,
   ENRICHMENT_STATES,
+  FULL_RUN_STAGES,
+  FULL_RUN_STATES,
   MESSAGE_TYPES,
   NO_PROGRESS_LIMIT,
   RUN_STATES,
@@ -51,6 +53,7 @@ import {
   resetDebugState,
   requestStopCrawler,
   setAiQueueState,
+  setFullRunState,
   setTargetCount,
   syncEnrichedItems,
   startEnrichment,
@@ -61,7 +64,9 @@ import {
 
 const activeEnrichments = new Map();
 const activeAiValidationRuns = new Map();
+const activeFullRuns = new Map();
 const AI_RETRY_ALARM_PREFIX = "collector.ai.retry.";
+const FULL_RUN_POLL_MS = 500;
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearTabState(tabId);
@@ -171,39 +176,15 @@ async function handleMessage(message, sender) {
     }
 
     case MESSAGE_TYPES.startRequest: {
-      const preStart = getSerializableState(tabId);
-
-      if (preStart.runState === RUN_STATES.unavailable) {
-        return { ok: false, error: "LinkedIn feed is unavailable on this tab." };
-      }
-
-      if (preStart.runState === RUN_STATES.running || preStart.runState === RUN_STATES.stopping) {
-        return { ok: true, state: preStart };
-      }
-
-      const state = await startCrawler(tabId, message.targetCount);
-      logServiceWorkerEvent("start-requested", {
-        tabId,
-        targetCount: state.targetCount,
-      });
-      await broadcastCountUpdated(tabId, state);
-      const commandDelivered = await sendCrawlerCommand(tabId, "start", {
-        targetCount: state.targetCount,
-      });
-      if (!commandDelivered) {
-        const unavailableState = await markFeedReady(tabId, false);
-        await broadcastCountUpdated(tabId, unavailableState);
-        return {
-          ok: false,
-          error: "LinkedIn feed is unavailable on this tab.",
-          state: unavailableState,
-        };
-      }
-      return { ok: true, state };
+      return startCrawlerForTab(tabId, message.targetCount);
     }
 
     case MESSAGE_TYPES.stopRequest: {
       const preStop = getSerializableState(tabId);
+
+      if (isFullRunRunning(preStop)) {
+        return stopFullRun(tabId);
+      }
 
       if (preStop.runState !== RUN_STATES.running && preStop.runState !== RUN_STATES.stopping) {
         return { ok: true, state: preStop };
@@ -214,6 +195,28 @@ async function handleMessage(message, sender) {
       await broadcastCountUpdated(tabId, state);
       await sendCrawlerCommand(tabId, "stop");
       return { ok: true, state };
+    }
+
+    case MESSAGE_TYPES.fullRunStartRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required" };
+      }
+
+      return startFullRun(tabId, {
+        targetCount: message.targetCount,
+        resume: false,
+      });
+    }
+
+    case MESSAGE_TYPES.fullRunResumeRequest: {
+      if (tabId == null) {
+        return { ok: false, error: "tabId is required" };
+      }
+
+      return startFullRun(tabId, {
+        targetCount: message.targetCount,
+        resume: true,
+      });
     }
 
     case MESSAGE_TYPES.newItems: {
@@ -255,66 +258,7 @@ async function handleMessage(message, sender) {
         return { ok: false, error: "tabId is required" };
       }
 
-      const state = getSerializableState(tabId);
-      const config = await getAiConfig();
-      const configError = getAiConfigError(config);
-
-      if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
-        return { ok: false, error: "Stop the crawler before running AI validation." };
-      }
-
-      if (isEnrichmentRunning(state)) {
-        return { ok: false, error: "Wait for enrichment to finish before running AI validation." };
-      }
-
-      if (activeAiValidationRuns.has(tabId)) {
-        return { ok: true, started: false, aiQueue: state.aiQueue };
-      }
-
-      if (!state.count) {
-        return { ok: false, error: "No posts available for AI validation." };
-      }
-
-      if (configError) {
-        const queueState = await setAiQueueState(tabId, {
-          phase: AI_QUEUE_PHASES.configError,
-          retryAfterUntil: null,
-          lastError: configError,
-          lastMessage: "AI configuration needs attention.",
-        });
-        await broadcastCountUpdated(tabId, queueState);
-        return { ok: false, error: configError, aiQueue: queueState.aiQueue };
-      }
-
-      await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
-      await resetAiValidationStatuses(tabId);
-      const eligibleItems = getAiValidationEligibleItems(tabId);
-
-      if (!eligibleItems.length) {
-        return { ok: false, error: "No posts available for AI validation." };
-      }
-
-      const totalChunks = Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize);
-      const startedState = await setAiQueueState(tabId, {
-        phase: AI_QUEUE_PHASES.running,
-        retryAfterUntil: null,
-        lastError: null,
-        lastRequestAt: null,
-        totalPosts: eligibleItems.length,
-        processedPosts: 0,
-        totalChunks,
-        completedChunks: 0,
-        currentChunkIndex: 1,
-        activeChunkFingerprints: [],
-        lastMessage: "Starting AI validation bulk run.",
-      });
-      await broadcastAiActivity(
-        tabId,
-        `AI validation started for ${eligibleItems.length} posts in ${totalChunks} chunks.`
-      );
-      await broadcastCountUpdated(tabId, startedState);
-      void ensureAiValidationRun(tabId);
-      return { ok: true, started: true, aiQueue: startedState.aiQueue };
+      return startAiValidationForTab(tabId);
     }
 
     case MESSAGE_TYPES.aiValidationCancelRequest: {
@@ -473,40 +417,7 @@ async function handleMessage(message, sender) {
         return { ok: false, error: "tabId is required for enrichment" };
       }
 
-      const state = getSerializableState(tabId);
-
-      if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
-        return { ok: false, error: "Stop the crawler before running enrichment." };
-      }
-
-      if (isAiValidationRunning(state)) {
-        return { ok: false, error: "Wait for AI validation to finish before running enrichment." };
-      }
-
-      if (!state.count) {
-        return { ok: false, error: "No posts available to enrich." };
-      }
-
-      if (activeEnrichments.has(tabId)) {
-        return {
-          ok: true,
-          started: false,
-          enrichment: state.enrichment,
-        };
-      }
-
-      const startedState = await startEnrichment(tabId, {
-        totalPosts: state.items.length,
-        totalAuthors: countDistinctAuthors(state.items),
-        lastMessage: "Starting author enrichment.",
-      });
-      await broadcastCountUpdated(tabId, startedState);
-      void runEnrichment(tabId);
-      return {
-        ok: true,
-        started: true,
-        enrichment: startedState.enrichment,
-      };
+      return startEnrichmentForTab(tabId);
     }
 
     case MESSAGE_TYPES.exportEnrichedRequest: {
@@ -655,6 +566,7 @@ async function broadcastCountUpdated(tabId, state) {
     enrichment: state.enrichment,
     aiCounts: state.aiCounts,
     aiQueue: state.aiQueue,
+    fullRun: state.fullRun,
   };
 
   try {
@@ -709,8 +621,499 @@ function isProcessingLocked(state) {
     state?.runState === RUN_STATES.running ||
     state?.runState === RUN_STATES.stopping ||
     isEnrichmentRunning(state) ||
+    isAiValidationRunning(state) ||
+    isFullRunActive(state)
+  );
+}
+
+function isFullRunRunning(state) {
+  return state?.fullRun?.status === FULL_RUN_STATES.running;
+}
+
+function isFullRunActive(state) {
+  return [FULL_RUN_STATES.running, FULL_RUN_STATES.stopped].includes(state?.fullRun?.status);
+}
+
+async function startCrawlerForTab(tabId, targetCount) {
+  const preStart = getSerializableState(tabId);
+
+  if (preStart.runState === RUN_STATES.unavailable) {
+    return { ok: false, error: "LinkedIn feed is unavailable on this tab." };
+  }
+
+  if (preStart.runState === RUN_STATES.running || preStart.runState === RUN_STATES.stopping) {
+    return { ok: true, state: preStart };
+  }
+
+  const state = await startCrawler(tabId, targetCount);
+  logServiceWorkerEvent("start-requested", {
+    tabId,
+    targetCount: state.targetCount,
+  });
+  await broadcastCountUpdated(tabId, state);
+  const commandDelivered = await sendCrawlerCommand(tabId, "start", {
+    targetCount: state.targetCount,
+  });
+
+  if (!commandDelivered) {
+    const unavailableState = await markFeedReady(tabId, false);
+    await broadcastCountUpdated(tabId, unavailableState);
+    return {
+      ok: false,
+      error: "LinkedIn feed is unavailable on this tab.",
+      state: unavailableState,
+    };
+  }
+
+  return { ok: true, state };
+}
+
+async function startEnrichmentForTab(tabId) {
+  const state = getSerializableState(tabId);
+
+  if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
+    return { ok: false, error: "Stop the crawler before running enrichment." };
+  }
+
+  if (isAiValidationRunning(state)) {
+    return { ok: false, error: "Wait for AI validation to finish before running enrichment." };
+  }
+
+  if (!state.count) {
+    return { ok: false, error: "No posts available to enrich." };
+  }
+
+  if (activeEnrichments.has(tabId)) {
+    return {
+      ok: true,
+      started: false,
+      enrichment: state.enrichment,
+    };
+  }
+
+  const startedState = await startEnrichment(tabId, {
+    totalPosts: state.items.length,
+    totalAuthors: countDistinctAuthors(state.items),
+    lastMessage: "Starting author enrichment.",
+  });
+  await broadcastCountUpdated(tabId, startedState);
+  void runEnrichment(tabId);
+  return {
+    ok: true,
+    started: true,
+    enrichment: startedState.enrichment,
+  };
+}
+
+async function startAiValidationForTab(tabId) {
+  const state = getSerializableState(tabId);
+  const config = await getAiConfig();
+  const configError = getAiConfigError(config);
+
+  if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
+    return { ok: false, error: "Stop the crawler before running AI validation." };
+  }
+
+  if (isEnrichmentRunning(state)) {
+    return { ok: false, error: "Wait for enrichment to finish before running AI validation." };
+  }
+
+  if (activeAiValidationRuns.has(tabId)) {
+    return { ok: true, started: false, aiQueue: state.aiQueue };
+  }
+
+  if (!state.count) {
+    return { ok: false, error: "No posts available for AI validation." };
+  }
+
+  if (configError) {
+    const queueState = await setAiQueueState(tabId, {
+      phase: AI_QUEUE_PHASES.configError,
+      retryAfterUntil: null,
+      lastError: configError,
+      lastMessage: "AI configuration needs attention.",
+    });
+    await broadcastCountUpdated(tabId, queueState);
+    return { ok: false, error: configError, aiQueue: queueState.aiQueue };
+  }
+
+  await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
+  await resetAiValidationStatuses(tabId);
+  const eligibleItems = getAiValidationEligibleItems(tabId);
+
+  if (!eligibleItems.length) {
+    return { ok: false, error: "No posts available for AI validation." };
+  }
+
+  const totalChunks = Math.ceil(eligibleItems.length / AI_RATE_LIMIT.chunkSize);
+  const startedState = await setAiQueueState(tabId, {
+    phase: AI_QUEUE_PHASES.running,
+    retryAfterUntil: null,
+    lastError: null,
+    lastRequestAt: null,
+    totalPosts: eligibleItems.length,
+    processedPosts: 0,
+    totalChunks,
+    completedChunks: 0,
+    currentChunkIndex: 1,
+    activeChunkFingerprints: [],
+    lastMessage: "Starting AI validation bulk run.",
+  });
+  await broadcastAiActivity(
+    tabId,
+    `AI validation started for ${eligibleItems.length} posts in ${totalChunks} chunks.`
+  );
+  await broadcastCountUpdated(tabId, startedState);
+  void ensureAiValidationRun(tabId);
+  return { ok: true, started: true, aiQueue: startedState.aiQueue };
+}
+
+async function startFullRun(tabId, { targetCount, resume = false } = {}) {
+  const state = getSerializableState(tabId);
+
+  if (activeFullRuns.has(tabId)) {
+    return { ok: true, started: false, fullRun: state.fullRun };
+  }
+
+  if (resume) {
+    if (state.fullRun?.status !== FULL_RUN_STATES.stopped) {
+      return { ok: false, error: "No stopped Run Full session is available to resume." };
+    }
+  } else if (isFullRunActive(state)) {
+    return { ok: false, error: "Run Full is already active. Use Resume to continue it." };
+  }
+
+  if (hasManualProcessRunning(state)) {
+    return { ok: false, error: "Wait for the active process to finish before running Full." };
+  }
+
+  const startedAt = resume
+    ? state.fullRun.startedAt || new Date().toISOString()
+    : new Date().toISOString();
+  const startStage =
+    resume && state.fullRun?.stage && state.fullRun.stage !== FULL_RUN_STAGES.idle
+      ? state.fullRun.stage
+      : FULL_RUN_STAGES.crawl;
+  const runningState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: startStage,
+    startedAt,
+    lastMessage: resume
+      ? `Run Full resumed from ${formatFullRunStage(startStage)}.`
+      : "Run Full started.",
+  });
+  await broadcastCountUpdated(tabId, runningState);
+
+  const run = {
+    cancelled: false,
+    promise: null,
+  };
+  run.promise = runFullSequence(tabId, run, {
+    startStage,
+    targetCount: targetCount || state.targetCount,
+  }).finally(() => {
+    activeFullRuns.delete(tabId);
+  });
+  activeFullRuns.set(tabId, run);
+
+  logServiceWorkerEvent(resume ? "full-run-resumed" : "full-run-started", {
+    tabId,
+    stage: startStage,
+    targetCount: targetCount || state.targetCount,
+  });
+  return { ok: true, started: true, fullRun: runningState.fullRun };
+}
+
+function hasManualProcessRunning(state) {
+  return (
+    state?.runState === RUN_STATES.running ||
+    state?.runState === RUN_STATES.stopping ||
+    isEnrichmentRunning(state) ||
     isAiValidationRunning(state)
   );
+}
+
+async function runFullSequence(tabId, run, { startStage, targetCount } = {}) {
+  try {
+    if (startStage === FULL_RUN_STAGES.crawl) {
+      const shouldContinue = await runFullCrawlerStage(tabId, run, targetCount);
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
+    if ([FULL_RUN_STAGES.crawl, FULL_RUN_STAGES.enrichment].includes(startStage)) {
+      const shouldContinue = await runFullEnrichmentStage(tabId, run);
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
+    const shouldComplete = await runFullAiStage(tabId, run);
+    if (!shouldComplete) {
+      return;
+    }
+
+    const completedState = await setFullRunState(tabId, {
+      status: FULL_RUN_STATES.completed,
+      stage: FULL_RUN_STAGES.ai,
+      lastMessage: "Run Full completed. AI validation is complete.",
+    });
+    await broadcastAiActivity(tabId, "Run Full completed. AI validation is complete.");
+    await broadcastCountUpdated(tabId, completedState);
+    logServiceWorkerEvent("full-run-completed", { tabId });
+  } catch (error) {
+    await failFullRun(tabId, error.message || "Run Full failed.");
+  }
+}
+
+async function runFullCrawlerStage(tabId, run, targetCount) {
+  const stageState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: FULL_RUN_STAGES.crawl,
+    lastMessage: "Run Full running Start.",
+  });
+  await broadcastCountUpdated(tabId, stageState);
+
+  const startResponse = await startCrawlerForTab(tabId, targetCount);
+  if (!startResponse?.ok) {
+    await failFullRun(tabId, startResponse?.error || "Run Full could not start crawling.");
+    return false;
+  }
+
+  const crawlerState = await waitForFullRunCondition(tabId, run, (state) => {
+    if (state.fullRun?.status === FULL_RUN_STATES.stopped) {
+      return { done: true, state, stopped: true };
+    }
+
+    if (state.runState !== RUN_STATES.running && state.runState !== RUN_STATES.stopping) {
+      return { done: true, state };
+    }
+
+    return { done: false };
+  });
+
+  if (!crawlerState || run.cancelled || crawlerState.fullRun?.status === FULL_RUN_STATES.stopped) {
+    return false;
+  }
+
+  if (!crawlerState.count) {
+    await failFullRun(tabId, "Run Full stopped because Start captured 0 posts.");
+    return false;
+  }
+
+  if (crawlerState.runState === RUN_STATES.unavailable) {
+    await failFullRun(tabId, "Run Full stopped because the LinkedIn feed is unavailable.");
+    return false;
+  }
+
+  const completedState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: FULL_RUN_STAGES.enrichment,
+    lastMessage: `Start completed with ${crawlerState.count} posts. Run Full starting enrichment.`,
+  });
+  await broadcastCountUpdated(tabId, completedState);
+  return true;
+}
+
+async function runFullEnrichmentStage(tabId, run) {
+  const stageState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: FULL_RUN_STAGES.enrichment,
+    lastMessage: "Run Full running enrichment.",
+  });
+  await broadcastCountUpdated(tabId, stageState);
+
+  const enrichmentResponse = await startEnrichmentForTab(tabId);
+  if (!enrichmentResponse?.ok) {
+    await failFullRun(tabId, enrichmentResponse?.error || "Run Full could not start enrichment.");
+    return false;
+  }
+
+  const enrichmentState = await waitForFullRunCondition(tabId, run, (state) => {
+    if (state.fullRun?.status === FULL_RUN_STATES.stopped) {
+      return { done: true, state, stopped: true };
+    }
+
+    if (!isEnrichmentRunning(state)) {
+      return { done: true, state };
+    }
+
+    return { done: false };
+  });
+
+  if (
+    !enrichmentState ||
+    run.cancelled ||
+    enrichmentState.fullRun?.status === FULL_RUN_STATES.stopped
+  ) {
+    return false;
+  }
+
+  if (enrichmentState.enrichment?.status !== ENRICHMENT_STATES.completed) {
+    await failFullRun(
+      tabId,
+      enrichmentState.enrichment?.lastMessage || "Run Full stopped because enrichment failed."
+    );
+    return false;
+  }
+
+  const completedState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: FULL_RUN_STAGES.ai,
+    lastMessage: "Enrichment completed. Run Full starting AI validation.",
+  });
+  await broadcastCountUpdated(tabId, completedState);
+  return true;
+}
+
+async function runFullAiStage(tabId, run) {
+  const stageState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.running,
+    stage: FULL_RUN_STAGES.ai,
+    lastMessage: "Run Full running AI validation.",
+  });
+  await broadcastCountUpdated(tabId, stageState);
+
+  const aiResponse = await startAiValidationForTab(tabId);
+  if (!aiResponse?.ok) {
+    await failFullRun(tabId, aiResponse?.error || "Run Full could not start AI validation.");
+    return false;
+  }
+
+  const aiState = await waitForFullRunCondition(tabId, run, (state) => {
+    if (state.fullRun?.status === FULL_RUN_STATES.stopped) {
+      return { done: true, state, stopped: true };
+    }
+
+    if (!isAiValidationRunning(state)) {
+      return { done: true, state };
+    }
+
+    return { done: false };
+  });
+
+  if (!aiState || run.cancelled || aiState.fullRun?.status === FULL_RUN_STATES.stopped) {
+    return false;
+  }
+
+  if (aiState.aiQueue?.phase !== AI_QUEUE_PHASES.completed) {
+    await failFullRun(
+      tabId,
+      aiState.aiQueue?.lastError ||
+        aiState.aiQueue?.lastMessage ||
+        "Run Full stopped because AI validation failed."
+    );
+    return false;
+  }
+
+  return true;
+}
+
+async function waitForFullRunCondition(tabId, run, predicate) {
+  while (!run.cancelled) {
+    const state = getSerializableState(tabId);
+    const result = predicate(state);
+
+    if (result?.done) {
+      return result.state || state;
+    }
+
+    await delay(FULL_RUN_POLL_MS);
+  }
+
+  return null;
+}
+
+async function stopFullRun(tabId) {
+  const activeRun = activeFullRuns.get(tabId);
+  if (activeRun) {
+    activeRun.cancelled = true;
+  }
+
+  let state = getSerializableState(tabId);
+  const stage = state.fullRun?.stage || getFullRunStageForState(state);
+
+  if (state.runState === RUN_STATES.running || state.runState === RUN_STATES.stopping) {
+    state = await requestStopCrawler(tabId);
+    await sendCrawlerCommand(tabId, "stop");
+  }
+
+  if (isEnrichmentRunning(state)) {
+    const activeEnrichment = activeEnrichments.get(tabId);
+    if (activeEnrichment) {
+      activeEnrichment.cancelled = true;
+    }
+    state = await cancelEnrichment(tabId, "Run Full stop requested during enrichment.");
+  }
+
+  if (isAiValidationRunning(state)) {
+    const activeAiRun = activeAiValidationRuns.get(tabId);
+    if (activeAiRun) {
+      activeAiRun.cancelled = true;
+    }
+    await chrome.alarms.clear(`${AI_RETRY_ALARM_PREFIX}${tabId}`);
+    state = await setAiQueueState(tabId, {
+      phase: AI_QUEUE_PHASES.cancelled,
+      retryAfterUntil: null,
+      lastError: null,
+      activeChunkFingerprints: [],
+      lastMessage: "Run Full stop requested during AI validation.",
+    });
+  }
+
+  const stoppedState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.stopped,
+    stage,
+    lastMessage: `Run Full stopped during ${formatFullRunStage(stage)}. Press Resume to continue.`,
+  });
+  await broadcastAiActivity(tabId, stoppedState.fullRun.lastMessage);
+  await broadcastCountUpdated(tabId, stoppedState);
+  logServiceWorkerEvent("full-run-stopped", { tabId, stage });
+  return { ok: true, state: stoppedState };
+}
+
+async function failFullRun(tabId, message) {
+  const failedState = await setFullRunState(tabId, {
+    status: FULL_RUN_STATES.failed,
+    lastMessage: message || "Run Full failed.",
+  });
+  await broadcastAiActivity(tabId, failedState.fullRun.lastMessage);
+  await broadcastCountUpdated(tabId, failedState);
+  logServiceWorkerEvent("full-run-failed", {
+    tabId,
+    message: failedState.fullRun.lastMessage,
+    stage: failedState.fullRun.stage,
+  });
+}
+
+function getFullRunStageForState(state) {
+  if (state?.runState === RUN_STATES.running || state?.runState === RUN_STATES.stopping) {
+    return FULL_RUN_STAGES.crawl;
+  }
+
+  if (isEnrichmentRunning(state)) {
+    return FULL_RUN_STAGES.enrichment;
+  }
+
+  if (isAiValidationRunning(state)) {
+    return FULL_RUN_STAGES.ai;
+  }
+
+  return state?.fullRun?.stage || FULL_RUN_STAGES.crawl;
+}
+
+function formatFullRunStage(stage) {
+  switch (stage) {
+    case FULL_RUN_STAGES.crawl:
+      return "Start";
+    case FULL_RUN_STAGES.enrichment:
+      return "Enrichment";
+    case FULL_RUN_STAGES.ai:
+      return "AI";
+    default:
+      return "Run Full";
+  }
 }
 
 function buildExportFilename(date = new Date()) {
@@ -979,7 +1382,7 @@ async function runAiValidation(tabId, run) {
           : `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} failed. ${chunk.length} posts marked unknown.`;
         await broadcastAiActivity(tabId, failedMessage);
         await broadcastCountUpdated(tabId, failedState);
-        continue;
+        return;
       }
 
       const retryDelayMs = getRetryDelayMs(normalizedError, attempts);

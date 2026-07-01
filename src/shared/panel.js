@@ -82,6 +82,9 @@ export function createPanelMarkup() {
           <button class="harvester-preset" type="button" data-target-preset="50">50</button>
           <button class="harvester-preset" type="button" data-target-preset="100">100</button>
         </div>
+        <div class="harvester-full-row">
+          <button class="harvester-button harvester-full-run" type="button">Run Full</button>
+        </div>
         <div class="harvester-target-row">
           <label class="harvester-label">
             Target posts

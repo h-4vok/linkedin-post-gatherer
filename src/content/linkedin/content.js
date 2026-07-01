@@ -36,6 +36,19 @@ import {
     completed: "completed",
     unavailable: "unavailable",
   };
+  const FULL_RUN_STATES = {
+    idle: "idle",
+    running: "running",
+    stopped: "stopped",
+    completed: "completed",
+    failed: "failed",
+  };
+  const FULL_RUN_STAGES = {
+    idle: "idle",
+    crawl: "crawl",
+    enrichment: "enrichment",
+    ai: "ai",
+  };
   const SCROLL_STEP_MIN = 400;
   const SCROLL_STEP_MAX = 600;
   const SCROLL_DELAY_MIN_MS = 1500;
@@ -69,6 +82,8 @@ import {
     setTargetRequest: "collector/set-target-request",
     startRequest: "collector/start-request",
     stopRequest: "collector/stop-request",
+    fullRunStartRequest: "collector/full-run-start-request",
+    fullRunResumeRequest: "collector/full-run-resume-request",
     crawlerCommand: "collector/crawler-command",
     crawlerProgress: "collector/crawler-progress",
     log: "collector/log",
@@ -116,6 +131,7 @@ import {
     enrichment: createEmptyEnrichmentState(),
     aiCounts: createEmptyAiCounts(),
     aiQueue: createEmptyAiQueueState(),
+    fullRun: createEmptyFullRunState(),
     panelPosition: { ...DEFAULT_PANEL_POSITION },
     panelMinimized: false,
     feedVisible: false,
@@ -175,6 +191,7 @@ import {
     uiState.enrichment = mergeEnrichmentState(response?.state?.enrichment);
     uiState.aiCounts = mergeAiCounts(response?.state?.aiCounts);
     uiState.aiQueue = mergeAiQueueState(response?.state?.aiQueue);
+    uiState.fullRun = mergeFullRunState(response?.state?.fullRun);
     uiState.panelPosition = clampPanelPosition(
       stored[STORAGE_KEYS.panelPosition] || DEFAULT_PANEL_POSITION,
       { minimized: stored[STORAGE_KEYS.panelMinimized] || false }
@@ -236,10 +253,13 @@ import {
       uiState.enrichment = mergeEnrichmentState(message.enrichment);
       const nextAiCounts = mergeAiCounts(message.aiCounts);
       const nextAiQueue = mergeAiQueueState(message.aiQueue);
+      const nextFullRun = mergeFullRunState(message.fullRun);
 
       appendAiActivity(nextAiCounts, nextAiQueue);
+      appendFullRunActivity(nextFullRun);
       uiState.aiCounts = nextAiCounts;
       uiState.aiQueue = nextAiQueue;
+      uiState.fullRun = nextFullRun;
 
       if (
         uiState.enrichment.status === ENRICHMENT_STATES.running &&
@@ -307,6 +327,9 @@ import {
       uiState.noProgressCycles = 0;
       uiState.stalledWaitCount = 0;
       uiState.enrichment = mergeEnrichmentState(null);
+      uiState.aiCounts = mergeAiCounts(null);
+      uiState.aiQueue = mergeAiQueueState(null);
+      uiState.fullRun = mergeFullRunState(null);
       uiState.activityItems = ["Debug reset completed."];
       renderPanel();
 
@@ -585,6 +608,16 @@ import {
     };
   }
 
+  function createEmptyFullRunState() {
+    return {
+      status: FULL_RUN_STATES.idle,
+      stage: FULL_RUN_STAGES.idle,
+      lastMessage: null,
+      startedAt: null,
+      updatedAt: null,
+    };
+  }
+
   function mergeAiCounts(aiCounts) {
     return {
       ...createEmptyAiCounts(),
@@ -597,6 +630,27 @@ import {
       ...createEmptyAiQueueState(),
       ...(aiQueue || {}),
     };
+  }
+
+  function mergeFullRunState(fullRun) {
+    return {
+      ...createEmptyFullRunState(),
+      ...(fullRun || {}),
+    };
+  }
+
+  function appendFullRunActivity(nextFullRun) {
+    if (!nextFullRun?.lastMessage) {
+      return;
+    }
+
+    if (
+      nextFullRun.lastMessage !== uiState.fullRun.lastMessage ||
+      nextFullRun.status !== uiState.fullRun.status ||
+      nextFullRun.stage !== uiState.fullRun.stage
+    ) {
+      pushActivity(nextFullRun.lastMessage);
+    }
   }
 
   function appendAiActivity(nextAiCounts, nextAiQueue) {
@@ -2280,6 +2334,7 @@ import {
         }
 
         .harvester-presets,
+        .harvester-full-row,
         .harvester-actions {
           display: grid;
           gap: 6px;
@@ -2347,6 +2402,7 @@ import {
           grid-template-columns: 1fr 1fr;
         }
 
+        .harvester-full-run,
         .harvester-start,
         .harvester-download-result,
         .harvester-enrichment-run,
@@ -2562,6 +2618,9 @@ import {
             <button class="harvester-preset" type="button" data-target-preset="50">50</button>
             <button class="harvester-preset" type="button" data-target-preset="100">100</button>
           </div>
+          <div class="harvester-full-row">
+            <button class="harvester-button harvester-full-run" type="button">Run Full</button>
+          </div>
           <div class="harvester-target-row">
             <label class="harvester-label">
               Target posts
@@ -2645,6 +2704,7 @@ import {
       heroCount: shadowRoot.querySelector(".harvester-hero-count"),
       heroTarget: shadowRoot.querySelector(".harvester-hero-target"),
       targetInput: shadowRoot.querySelector(".harvester-target"),
+      fullRunButton: shadowRoot.querySelector(".harvester-full-run"),
       startButton: shadowRoot.querySelector(".harvester-start"),
       stopButton: shadowRoot.querySelector(".harvester-stop"),
       reposts: shadowRoot.querySelector(".harvester-reposts"),
@@ -2694,6 +2754,9 @@ import {
     panel.startButton.addEventListener("click", function () {
       void startCollection();
     });
+    panel.fullRunButton.addEventListener("click", function () {
+      void runFullFromPanel();
+    });
     panel.stopButton.addEventListener("click", function () {
       void stopCollection();
     });
@@ -2728,6 +2791,10 @@ import {
       return;
     }
 
+    const fullRunActive = isFullRunActive();
+    const fullRunRunning = isFullRunRunning();
+    const fullRunStopped = isFullRunStopped();
+
     panel.host.style.display = uiState.feedVisible ? "block" : "none";
     panel.shell.dataset.state = uiState.panelMinimized ? "minimized" : "expanded";
     panel.status.textContent = uiState.status;
@@ -2735,24 +2802,35 @@ import {
     panel.statusBadge.dataset.runState = uiState.runState;
     panel.targetInput.value = String(uiState.targetCount);
     panel.targetInput.disabled =
-      uiState.runState === RUN_STATES.running || uiState.runState === RUN_STATES.stopping;
+      fullRunActive ||
+      uiState.runState === RUN_STATES.running ||
+      uiState.runState === RUN_STATES.stopping;
     panel.presetButtons.forEach(function (button) {
       const preset = clampTargetCount(button.dataset.targetPreset);
       button.classList.toggle("is-active", preset === uiState.targetCount);
       button.disabled =
-        uiState.runState === RUN_STATES.running || uiState.runState === RUN_STATES.stopping;
+        fullRunActive ||
+        uiState.runState === RUN_STATES.running ||
+        uiState.runState === RUN_STATES.stopping;
     });
+    panel.fullRunButton.disabled = !canRunFull();
+    panel.fullRunButton.textContent = getFullRunButtonLabel();
     panel.startButton.disabled =
-      uiState.runState === RUN_STATES.running ||
-      uiState.runState === RUN_STATES.stopping ||
-      uiState.runState === RUN_STATES.unavailable;
+      fullRunRunning ||
+      (!fullRunStopped &&
+        (uiState.runState === RUN_STATES.running ||
+          uiState.runState === RUN_STATES.stopping ||
+          uiState.runState === RUN_STATES.unavailable));
+    panel.startButton.textContent = getStartButtonLabel();
     panel.stopButton.disabled =
-      uiState.runState !== RUN_STATES.running && uiState.runState !== RUN_STATES.stopping;
+      !fullRunRunning &&
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping;
     panel.downloadResultButton.disabled = !canDownloadResult();
     panel.enrichmentRunButton.disabled = !canRunEnrichment();
-    panel.enrichmentCancelButton.disabled = !isEnrichmentRunning();
+    panel.enrichmentCancelButton.disabled = fullRunActive || !isEnrichmentRunning();
     panel.aiRunButton.disabled = !canRunAiValidation();
-    panel.aiCancelButton.disabled = !isAiValidationRunning();
+    panel.aiCancelButton.disabled = fullRunActive || !isAiValidationRunning();
     panel.enrichmentRunButton.textContent = getEnrichmentRunButtonLabel();
     panel.aiRunButton.textContent = getAiRunButtonLabel();
     panel.heroCount.textContent = String(uiState.count);
@@ -2821,6 +2899,7 @@ import {
   function canDownloadResult() {
     return (
       uiState.count > 0 &&
+      !isFullRunActive() &&
       uiState.runState !== RUN_STATES.running &&
       uiState.runState !== RUN_STATES.stopping &&
       uiState.runState !== RUN_STATES.unavailable &&
@@ -2832,6 +2911,7 @@ import {
   function canRunEnrichment() {
     return (
       uiState.count > 0 &&
+      !isFullRunActive() &&
       uiState.runState !== RUN_STATES.running &&
       uiState.runState !== RUN_STATES.stopping &&
       uiState.runState !== RUN_STATES.unavailable &&
@@ -2843,12 +2923,36 @@ import {
   function canRunAiValidation() {
     return (
       uiState.count > 0 &&
+      !isFullRunActive() &&
       uiState.runState !== RUN_STATES.running &&
       uiState.runState !== RUN_STATES.stopping &&
       uiState.runState !== RUN_STATES.unavailable &&
       !isEnrichmentRunning() &&
       !isAiValidationRunning()
     );
+  }
+
+  function canRunFull() {
+    return (
+      !isFullRunActive() &&
+      uiState.runState !== RUN_STATES.running &&
+      uiState.runState !== RUN_STATES.stopping &&
+      uiState.runState !== RUN_STATES.unavailable &&
+      !isEnrichmentRunning() &&
+      !isAiValidationRunning()
+    );
+  }
+
+  function isFullRunActive() {
+    return [FULL_RUN_STATES.running, FULL_RUN_STATES.stopped].includes(uiState.fullRun.status);
+  }
+
+  function isFullRunRunning() {
+    return uiState.fullRun.status === FULL_RUN_STATES.running;
+  }
+
+  function isFullRunStopped() {
+    return uiState.fullRun.status === FULL_RUN_STATES.stopped;
   }
 
   function isEnrichmentRunning() {
@@ -2872,6 +2976,53 @@ import {
     }
 
     return "Run AI validation";
+  }
+
+  function getFullRunButtonLabel() {
+    if (uiState.fullRun.status === FULL_RUN_STATES.running) {
+      return "Run Full running...";
+    }
+
+    if (uiState.fullRun.status === FULL_RUN_STATES.stopped) {
+      return "Run Full stopped";
+    }
+
+    return "Run Full";
+  }
+
+  function getStartButtonLabel() {
+    if (isFullRunStopped()) {
+      return "Resume";
+    }
+
+    return "Start";
+  }
+
+  async function runFullFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.fullRunButton.disabled = true;
+    pushActivity("Run Full requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.fullRunStartRequest,
+        targetCount: clampTargetCount(panel.targetInput.value),
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to start Run Full.");
+      }
+
+      pushActivity("Run Full started.");
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
   }
 
   async function downloadLatestResultFromPanel() {
@@ -3026,6 +3177,11 @@ import {
       return;
     }
 
+    if (isFullRunStopped()) {
+      await resumeFullRunFromPanel();
+      return;
+    }
+
     pushActivity("Start requested.");
     renderPanel();
 
@@ -3042,6 +3198,33 @@ import {
 
     pushActivity("Crawler started.");
     renderPanel();
+  }
+
+  async function resumeFullRunFromPanel() {
+    if (!panel || !isExtensionContextAvailable()) {
+      return;
+    }
+
+    panel.startButton.disabled = true;
+    pushActivity("Run Full resume requested.");
+    renderPanel();
+
+    try {
+      const response = await safeSendMessage({
+        type: MESSAGE_TYPES.fullRunResumeRequest,
+        targetCount: clampTargetCount(panel.targetInput.value),
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "Failed to resume Run Full.");
+      }
+
+      pushActivity("Run Full resumed.");
+    } catch (error) {
+      pushActivity(error.message);
+    } finally {
+      renderPanel();
+    }
   }
 
   async function stopCollection() {

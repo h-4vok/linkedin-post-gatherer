@@ -3,6 +3,8 @@ import {
   AI_STATUS,
   AI_VALIDATION_SOURCE,
   ENRICHMENT_STATES,
+  FULL_RUN_STAGES,
+  FULL_RUN_STATES,
   RUN_STATES,
   STATUS_TEXT,
   TARGET_COUNT_DEFAULT,
@@ -47,6 +49,16 @@ function createEmptyAiQueueState() {
   };
 }
 
+function createEmptyFullRunState() {
+  return {
+    status: FULL_RUN_STATES.idle,
+    stage: FULL_RUN_STAGES.idle,
+    lastMessage: null,
+    startedAt: null,
+    updatedAt: null,
+  };
+}
+
 function createEmptyState() {
   return {
     itemsByFingerprint: new Map(),
@@ -60,6 +72,7 @@ function createEmptyState() {
     lastReason: null,
     enrichment: createEmptyEnrichmentState(),
     aiQueue: createEmptyAiQueueState(),
+    fullRun: createEmptyFullRunState(),
   };
 }
 
@@ -131,6 +144,7 @@ export function getSerializableState(tabId) {
       processedPosts: aiCounts.interested + aiCounts.not_interested,
       pendingCount: aiCounts.pending,
     },
+    fullRun: { ...tabState.fullRun },
   };
 }
 
@@ -387,6 +401,16 @@ export function setAiQueueState(tabId, queuePatch) {
   return persistState(tabId);
 }
 
+export function setFullRunState(tabId, fullRunPatch = {}) {
+  const tabState = getOrCreateTabState(tabId);
+  tabState.fullRun = {
+    ...tabState.fullRun,
+    ...fullRunPatch,
+    updatedAt: fullRunPatch.updatedAt || new Date().toISOString(),
+  };
+  return persistState(tabId);
+}
+
 export function startEnrichment(
   tabId,
   { totalPosts = 0, totalAuthors = 0, lastMessage = null } = {}
@@ -528,6 +552,10 @@ export async function hydrateStateFromStorage(tabId) {
   tabState.aiQueue = {
     ...createEmptyAiQueueState(),
     ...(storedState?.aiQueue || {}),
+  };
+  tabState.fullRun = {
+    ...createEmptyFullRunState(),
+    ...(storedState?.fullRun || {}),
   };
   tabStates.set(tabId, tabState);
 

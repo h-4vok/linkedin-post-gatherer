@@ -54,6 +54,21 @@ export const RUN_STATES = {
   unavailable: "unavailable",
 };
 
+export const FULL_RUN_STATES = {
+  idle: "idle",
+  running: "running",
+  stopped: "stopped",
+  completed: "completed",
+  failed: "failed",
+};
+
+export const FULL_RUN_STAGES = {
+  idle: "idle",
+  crawl: "crawl",
+  enrichment: "enrichment",
+  ai: "ai",
+};
+
 export const STORAGE_KEYS = {
   items: "collector.items",
   count: "collector.count",
@@ -74,6 +89,8 @@ export const MESSAGE_TYPES = {
   setTargetRequest: "collector/set-target-request",
   startRequest: "collector/start-request",
   stopRequest: "collector/stop-request",
+  fullRunStartRequest: "collector/full-run-start-request",
+  fullRunResumeRequest: "collector/full-run-resume-request",
   crawlerCommand: "collector/crawler-command",
   crawlerProgress: "collector/crawler-progress",
   log: "collector/log",
