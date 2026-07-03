@@ -4,7 +4,6 @@ import {
   RUN_STATES,
   STALLED_WAIT_LIMIT,
   TARGET_COUNT_DEFAULT,
-  TARGET_COUNT_MAX,
   TARGET_COUNT_MIN,
 } from "./constants.js";
 import { STATUS_TEXT } from "./messages.js";
@@ -16,7 +15,7 @@ export function clampTargetCount(value) {
     return TARGET_COUNT_DEFAULT;
   }
 
-  return Math.min(TARGET_COUNT_MAX, Math.max(TARGET_COUNT_MIN, parsed));
+  return Math.max(TARGET_COUNT_MIN, parsed);
 }
 
 export function getStartState(targetCount) {

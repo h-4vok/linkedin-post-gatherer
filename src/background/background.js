@@ -927,7 +927,10 @@ async function runFullEnrichmentStage(tabId, run) {
 
   const enrichmentResponse = await startEnrichmentForTab(tabId);
   if (!enrichmentResponse?.ok) {
-    await failFullRun(tabId, enrichmentResponse?.error || COPY_TEXT.fullRun.failedToStartEnrichment);
+    await failFullRun(
+      tabId,
+      enrichmentResponse?.error || COPY_TEXT.fullRun.failedToStartEnrichment
+    );
     return false;
   }
 
@@ -1222,10 +1225,7 @@ async function runAiValidation(tabId, run) {
         activeChunkFingerprints: [],
         lastMessage: COPY_TEXT.ai.validationCompleted,
       });
-      await broadcastAiActivity(
-        tabId,
-        COPY_TEXT.activity.aiCompleted(completedState.aiCounts)
-      );
+      await broadcastAiActivity(tabId, COPY_TEXT.activity.aiCompleted(completedState.aiCounts));
       await broadcastCountUpdated(tabId, completedState);
       return;
     }
@@ -1320,7 +1320,10 @@ async function runAiValidation(tabId, run) {
           (updatedState.aiQueue.completedChunks || 0) + 2
         ),
         activeChunkFingerprints: [],
-        lastMessage: COPY_TEXT.ai.chunkCompleted(currentChunkIndex, updatedState.aiQueue.totalChunks),
+        lastMessage: COPY_TEXT.ai.chunkCompleted(
+          currentChunkIndex,
+          updatedState.aiQueue.totalChunks
+        ),
       });
       const interestedCount = chunk.filter((item) => interestedIds.has(item.fingerprint)).length;
       logServiceWorkerEvent("ai-validation-chunk-completed", {
@@ -1330,10 +1333,7 @@ async function runAiValidation(tabId, run) {
         chunkSize: chunk.length,
         interestedCount,
       });
-      await broadcastAiActivity(
-        tabId,
-        `AI validation chunk ${currentChunkIndex}/${progressedState.aiQueue.totalChunks} completed. Interested: ${interestedCount}/${chunk.length}.`
-      );
+      await broadcastAiActivity(tabId, COPY_TEXT.activity.chunkResult(interestedCount));
       await broadcastCountUpdated(tabId, progressedState);
     } catch (error) {
       const normalizedError = normalizeAiError(error);
@@ -1418,10 +1418,7 @@ async function runAiValidation(tabId, run) {
         retryUntil,
         message: normalizedError.message,
       });
-      await broadcastAiActivity(
-        tabId,
-        COPY_TEXT.ai.chunkWaitRetry(Math.ceil(retryDelayMs / 1000))
-      );
+      await broadcastAiActivity(tabId, COPY_TEXT.ai.chunkWaitRetry(Math.ceil(retryDelayMs / 1000)));
       await broadcastCountUpdated(tabId, queueState);
       await scheduleValidationRetryAlarm(tabId, retryDelayMs);
       return;

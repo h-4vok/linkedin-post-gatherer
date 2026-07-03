@@ -98,8 +98,7 @@ import {
       aiConfigError: (message) => `AI config error: ${message}`,
       aiCompleted: (counts) =>
         `AI validation completed. interested: ${counts.interested}, not_interested: ${counts.not_interested}, unknown: ${counts.unknown}.`,
-      aiMarkedInterested: "AI marked 1 post as interested.",
-      aiMarkedNotInterested: "AI marked 1 post as not_interested.",
+      chunkResult: (count) => `AI Validation found: ${count} posts as "interested".`,
       aiMarkedUnknown: "AI marked a chunk as unknown after retries.",
       aiMarkedUnresolved: "AI left a chunk unresolved after provider overload. Retry later.",
       runFullRequested: "Run Full requested.",
@@ -182,6 +181,7 @@ import {
   let crawlShouldStop = false;
   let activeFeedContainer = null;
   let extensionContextAvailable = true;
+  let aiBackoffTicker = null;
 
   void bootstrapCollector();
 
@@ -291,6 +291,7 @@ import {
 
       appendAiActivity(nextAiCounts, nextAiQueue);
       appendFullRunActivity(nextFullRun);
+      syncAiBackoffTicker(nextAiQueue.phase);
       uiState.aiCounts = nextAiCounts;
       uiState.aiQueue = nextAiQueue;
       uiState.fullRun = nextFullRun;
@@ -734,14 +735,6 @@ import {
       pushActivity(COPY_TEXT.activity.aiCompleted(nextAiCounts));
     }
 
-    if ((nextAiCounts.interested || 0) > (uiState.aiCounts.interested || 0)) {
-      pushActivity(COPY_TEXT.activity.aiMarkedInterested);
-    }
-
-    if ((nextAiCounts.not_interested || 0) > (uiState.aiCounts.not_interested || 0)) {
-      pushActivity(COPY_TEXT.activity.aiMarkedNotInterested);
-    }
-
     if ((nextAiCounts.unknown || 0) > (uiState.aiCounts.unknown || 0)) {
       pushActivity(COPY_TEXT.activity.aiMarkedUnknown);
     }
@@ -829,7 +822,7 @@ import {
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff) {
-      return "Waiting before retry. " + formatRetryCountdown(uiState.aiQueue.retryAfterUntil);
+      return "Backing off. " + formatRetryCountdown(uiState.aiQueue.retryAfterUntil);
     }
 
     if (uiState.aiQueue.phase === AI_QUEUE_PHASES.running) {
@@ -863,9 +856,20 @@ import {
     return "No AI validation running.";
   }
 
+  function formatAiCopy() {
+    if (uiState.aiQueue.phase === AI_QUEUE_PHASES.backingOff) {
+      return (
+        "AI validation paused due to rate limit. " +
+        formatRetryCountdown(uiState.aiQueue.retryAfterUntil)
+      );
+    }
+
+    return formatAiSummary();
+  }
+
   function formatRetryCountdown(retryAfterUntil) {
     if (!retryAfterUntil) {
-      return "Retry time pending.";
+      return "Retry in 60s.";
     }
 
     const waitMs = new Date(retryAfterUntil).getTime() - Date.now();
@@ -891,6 +895,27 @@ import {
 
   function hasAiResults() {
     return getAiDoneCount() > 0;
+  }
+
+  function syncAiBackoffTicker(phase) {
+    const shouldTick = phase === AI_QUEUE_PHASES.backingOff;
+
+    if (!shouldTick && aiBackoffTicker) {
+      window.clearInterval(aiBackoffTicker);
+      aiBackoffTicker = null;
+      return;
+    }
+
+    if (shouldTick && !aiBackoffTicker) {
+      aiBackoffTicker = window.setInterval(() => {
+        if (uiState.aiQueue.phase !== AI_QUEUE_PHASES.backingOff) {
+          syncAiBackoffTicker(uiState.aiQueue.phase);
+          return;
+        }
+
+        renderPanel();
+      }, 1000);
+    }
   }
 
   function getEnrichmentRunButtonLabel() {
@@ -2877,12 +2902,7 @@ import {
     panel.enrichmentCopy.textContent =
       uiState.enrichment.lastMessage || "No enrichment in progress.";
     panel.aiStatus.textContent = formatAiQueuePhase(uiState.aiQueue.phase);
-    panel.aiSummary.textContent =
-      formatAiQueuePhase(uiState.aiQueue.phase) +
-      " - chunk " +
-      (uiState.aiQueue.completedChunks || 0) +
-      "/" +
-      (uiState.aiQueue.totalChunks || 0);
+    panel.aiSummary.textContent = formatAiSummary();
     panel.aiPending.textContent = "Pending " + (uiState.aiCounts.pending || 0);
     panel.aiDone.textContent =
       "Progress " +
@@ -2896,7 +2916,7 @@ import {
       (uiState.aiCounts.not_interested || 0) +
       " / Unknown " +
       (uiState.aiCounts.unknown || 0);
-    panel.aiCopy.textContent = formatAiSummary();
+    panel.aiCopy.textContent = formatAiCopy();
     panel.aiError.textContent = uiState.aiQueue.lastError
       ? "Last error: " + uiState.aiQueue.lastError
       : "Last error: none";
@@ -3192,7 +3212,9 @@ import {
       return;
     }
 
-    pushActivity(options?.logMessage || COPY_TEXT.activity.targetUpdated(response.state.targetCount));
+    pushActivity(
+      options?.logMessage || COPY_TEXT.activity.targetUpdated(response.state.targetCount)
+    );
     renderPanel();
   }
 

@@ -49,8 +49,7 @@ export const COPY_TEXT = {
     aiConfigError: (message) => `AI config error: ${message}`,
     aiCompleted: (counts) =>
       `AI validation completed. interested: ${counts.interested}, not_interested: ${counts.not_interested}, unknown: ${counts.unknown}.`,
-    aiMarkedInterested: "AI marked 1 post as interested.",
-    aiMarkedNotInterested: "AI marked 1 post as not_interested.",
+    chunkResult: (count) => `AI Validation found: ${count} posts as "interested".`,
     aiMarkedUnknown: "AI marked a chunk as unknown after retries.",
     aiMarkedUnresolved: "AI left a chunk unresolved after provider overload. Retry later.",
     runFullRequested: "Run Full requested.",
@@ -90,7 +89,8 @@ export const COPY_TEXT = {
   },
   panel: {
     noActiveTab: "No active browser tab.",
-    resetOnlyLinkedIn: "The reset button only applies to an open LinkedIn tab with the injected panel.",
+    resetOnlyLinkedIn:
+      "The reset button only applies to an open LinkedIn tab with the injected panel.",
     resetStatus:
       "Reset clears captured posts, enriched export state and in-memory scan tracking for this LinkedIn tab.",
   },
@@ -101,7 +101,8 @@ export const COPY_TEXT = {
     systemInstructionMissing: "Gemini system instruction is missing.",
     configNeedsAttention: "AI configuration needs attention.",
     startingBulkRun: "Starting AI validation bulk run.",
-    validationStarted: (posts, chunks) => `AI validation started for ${posts} posts in ${chunks} chunks.`,
+    validationStarted: (posts, chunks) =>
+      `AI validation started for ${posts} posts in ${chunks} chunks.`,
     validationCompleted: "AI validation completed for the current batch.",
     chunkRunning: (current, total) => `Running AI validation chunk ${current}/${total}.`,
     chunkCompleted: (current, total) => `Chunk ${current}/${total} completed.`,
@@ -126,7 +127,8 @@ export const COPY_TEXT = {
     resumedFrom: (stage) => `Run Full resumed from ${stage}.`,
     completed: "Run Full completed. AI validation is complete.",
     runningStart: "Run Full running Start.",
-    startedWithPosts: (count) => `Start completed with ${count} posts. Run Full starting enrichment.`,
+    startedWithPosts: (count) =>
+      `Start completed with ${count} posts. Run Full starting enrichment.`,
     runningEnrichment: "Run Full running enrichment.",
     runningAiValidation: "Run Full running AI validation.",
     stoppedDuring: (stage) => `Run Full stopped during ${stage}. Press Resume to continue.`,

@@ -11,7 +11,7 @@ import { LONG_WAIT_MS, RUN_STATES, STATUS_TEXT } from "../src/shared/constants.j
 describe("crawler helpers", () => {
   it("clamps target count into the supported range", () => {
     expect(clampTargetCount(0)).toBe(1);
-    expect(clampTargetCount(500)).toBe(200);
+    expect(clampTargetCount(500)).toBe(500);
     expect(clampTargetCount("25")).toBe(25);
   });
 
@@ -19,7 +19,7 @@ describe("crawler helpers", () => {
     expect(getStartState(999)).toMatchObject({
       runState: RUN_STATES.running,
       status: STATUS_TEXT.scanning,
-      targetCount: 200,
+      targetCount: 999,
       noProgressCycles: 0,
     });
   });

@@ -8,7 +8,6 @@ export const SUGGESTED_LABELS = ["Suggested", "Sugerido"];
 export const RELATIONSHIP_MARKERS = ["1st", "2nd", "3rd+", "Following"];
 export const TARGET_COUNT_DEFAULT = 50;
 export const TARGET_COUNT_MIN = 1;
-export const TARGET_COUNT_MAX = 200;
 export const NO_PROGRESS_LIMIT = 8;
 export const STALLED_WAIT_LIMIT = 3;
 export const LONG_WAIT_MS = 20000;

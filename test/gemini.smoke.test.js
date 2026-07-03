@@ -150,7 +150,7 @@ describe("gemini validation helpers", () => {
   it("calculates conservative retry delays for free-tier quota handling", () => {
     expect(shouldRetryGeminiError({ kind: "rate-limited" }, AI_RATE_LIMIT.maxAttempts)).toBe(false);
     expect(getRetryDelayMs({ kind: "rate-limited", retryAfterMs: 8000 }, 2)).toBe(13000);
-    expect(getRetryDelayMs({ kind: "quota-exhausted" }, 1)).toBe(AI_RATE_LIMIT.quotaCooldownMs);
+    expect(getRetryDelayMs({ kind: "quota-exhausted" }, 1)).toBe(AI_RATE_LIMIT.quotaCooldownMs + 5000);
     expect(buildValidationResult(AI_STATUS.unknown, 3, "rate-limited")).toMatchObject({
       status: AI_STATUS.unknown,
       attempts: 3,

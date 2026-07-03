@@ -134,16 +134,20 @@ export function buildValidationResult(status, attempts, error = null, options = 
 
 export function getRetryDelayMs(error, attemptNumber) {
   if (error?.kind === "quota-exhausted") {
-    return AI_RATE_LIMIT.quotaCooldownMs;
+    return AI_RATE_LIMIT.quotaCooldownMs + 5000;
   }
 
   if (error?.kind === "rate-limited") {
-    const baseDelay = error.retryAfterMs || AI_RATE_LIMIT.defaultBackoffMs;
+    const baseDelay = error.retryAfterMs || 60000;
     return baseDelay + 5000;
   }
 
   if (error?.kind === "network-error") {
-    return AI_RATE_LIMIT.defaultBackoffMs * Math.max(1, attemptNumber);
+    return AI_RATE_LIMIT.defaultBackoffMs * Math.max(1, attemptNumber) + 5000;
+  }
+
+  if (error?.kind === "server-error") {
+    return AI_RATE_LIMIT.defaultBackoffMs * Math.max(1, attemptNumber) + 5000;
   }
 
   return 0;
