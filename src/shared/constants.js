@@ -1,4 +1,5 @@
-import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "../background/default-system-instruction.js";
+import { DEFAULT_GEMINI_SYSTEM_INSTRUCTION } from "./default-system-instruction.js";
+import { STATUS_TEXT } from "./messages.js";
 
 export const FEED_SELECTOR = 'div[componentkey="container-update-list_mainFeed-lazy-container"]';
 export const POST_SELECTOR = 'div[role="listitem"]';
@@ -44,6 +45,8 @@ export const AI_DEFAULT_CONFIG = {
   model: "gemini-3.1-flash-lite",
   systemInstruction: DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
 };
+
+export { STATUS_TEXT };
 
 export const RUN_STATES = {
   idle: "idle",
@@ -110,18 +113,6 @@ export const MESSAGE_TYPES = {
   setAiConfig: "collector/set-ai-config",
   aiStatusUpdated: "collector/ai-status-updated",
   aiActivity: "collector/ai-activity",
-};
-
-export const STATUS_TEXT = {
-  idle: "Waiting for LinkedIn feed...",
-  attached: "Ready to collect.",
-  scanning: "Collector attached and scanning new posts.",
-  stopping: "Stopping crawler.",
-  stopped: "Stopped by user.",
-  completed: "Target reached.",
-  waitingForMore: "Waiting for more posts to load.",
-  stalled: "Feed exhausted or stalled.",
-  unavailable: "LinkedIn feed container not found on this view.",
 };
 
 export const ENRICHMENT_STATES = {

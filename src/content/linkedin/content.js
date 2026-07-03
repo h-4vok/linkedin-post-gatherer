@@ -73,6 +73,55 @@ import {
     unknown: "unknown",
     unresolved: "unresolved",
   };
+  const STATUS_TEXT = {
+    idle: "Waiting for LinkedIn feed...",
+    attached: "Ready to collect.",
+    scanning: "Scrolling and collecting posts.",
+    stopping: "Stopping crawler.",
+    stopped: "Stopped by user.",
+    completed: "Target reached.",
+    stalled: "Feed exhausted or stalled.",
+    unavailable: "LinkedIn feed container not found on this view.",
+  };
+  const COPY_TEXT = {
+    activity: {
+      nothingToCopy: "Nothing to copy.",
+      copied: "Activity log copied.",
+      copyFailed: "Copy failed. Use manual selection from the activity list.",
+      capturedPosts: (count) => `Captured ${count} new posts.`,
+      detectedReposts: (count) => `Detected ${count} reposts so far.`,
+      feedStats: (count, repostCount) =>
+        `Collected ${count} posts total, ${repostCount} reposts.`,
+      aiChunkRunning: (current, total) => `AI validation chunk ${current}/${total} running.`,
+      aiChunkBackingOff: (current, total) =>
+        `AI validation backing off before retrying chunk ${current}/${total}.`,
+      aiConfigError: (message) => `AI config error: ${message}`,
+      aiCompleted: (counts) =>
+        `AI validation completed. interested: ${counts.interested}, not_interested: ${counts.not_interested}, unknown: ${counts.unknown}.`,
+      aiMarkedInterested: "AI marked 1 post as interested.",
+      aiMarkedNotInterested: "AI marked 1 post as not_interested.",
+      aiMarkedUnknown: "AI marked a chunk as unknown after retries.",
+      aiMarkedUnresolved: "AI left a chunk unresolved after provider overload. Retry later.",
+      runFullRequested: "Run Full requested.",
+      runFullStarted: "Run Full started.",
+      resultDownloadRequested: "Result download requested.",
+      resultDownloaded: (filename) => `Downloaded ${filename}`,
+      enrichmentRequested: "Enrichment requested.",
+      enrichmentStarted: "Enrichment started.",
+      enrichmentCancelled: "Enrichment cancellation requested.",
+      aiValidationRequested: "AI validation requested.",
+      aiValidationStarted: "AI validation started.",
+      aiValidationCancelled: "AI validation cancellation requested.",
+      targetUpdated: (targetCount) => `Target updated to ${targetCount}.`,
+      startRequested: "Start requested.",
+      crawlerStarted: "Crawler started.",
+      runFullResumeRequested: "Run Full resume requested.",
+      runFullResumed: "Run Full resumed.",
+      stopRequested: "Stop requested.",
+      crawlerStopRequested: "Crawler stop requested.",
+      debugResetCompleted: "Debug reset completed.",
+    },
+  };
 
   const MESSAGE_TYPES = {
     feedReady: "collector/feed-ready",
@@ -99,17 +148,6 @@ import {
     aiValidationCancelRequest: "collector/ai-validation-cancel-request",
     profileExtractRequest: "collector/profile-extract-request",
     aiActivity: "collector/ai-activity",
-  };
-
-  const STATUS_TEXT = {
-    idle: "Waiting for LinkedIn feed...",
-    attached: "Ready to collect.",
-    scanning: "Scrolling and collecting posts.",
-    stopping: "Stopping crawler.",
-    stopped: "Stopped by user.",
-    completed: "Target reached.",
-    stalled: "Feed exhausted or stalled.",
-    unavailable: "LinkedIn feed container not found on this view.",
   };
 
   const STORAGE_KEYS = {
@@ -222,20 +260,16 @@ import {
   function handleRuntimeMessage(message, _sender, sendResponse) {
     if (message?.type === MESSAGE_TYPES.countUpdated) {
       if ((message.count || 0) > uiState.count) {
-        pushActivity("Captured " + ((message.count || 0) - uiState.count) + " new posts.");
+      pushActivity(COPY_TEXT.activity.capturedPosts((message.count || 0) - uiState.count));
       }
 
       if ((message.repostCount || 0) > uiState.repostCount) {
-        pushActivity("Detected " + (message.repostCount || 0) + " reposts so far.");
+        pushActivity(COPY_TEXT.activity.detectedReposts(message.repostCount || 0));
       }
 
       if ((message.stalledWaitCount || 0) > uiState.stalledWaitCount) {
         pushActivity(
-          "Long wait " +
-            (message.stalledWaitCount || 0) +
-            " / " +
-            STALLED_WAIT_LIMIT +
-            " scheduled."
+          `Long wait ${message.stalledWaitCount || 0} / ${STALLED_WAIT_LIMIT} scheduled.`
         );
       }
 
@@ -567,16 +601,16 @@ import {
     const text = uiState.activityItems.join("\n");
 
     if (!text) {
-      pushActivity("Nothing to copy.");
+      pushActivity(COPY_TEXT.activity.nothingToCopy);
       renderPanel();
       return;
     }
 
     try {
       await navigator.clipboard.writeText(text);
-      pushActivity("Activity log copied.");
+      pushActivity(COPY_TEXT.activity.copied);
     } catch {
-      pushActivity("Copy failed. Use manual selection from the activity list.");
+      pushActivity(COPY_TEXT.activity.copyFailed);
     }
 
     renderPanel();
@@ -664,11 +698,10 @@ import {
         nextAiQueue.currentChunkIndex !== uiState.aiQueue.currentChunkIndex)
     ) {
       pushActivity(
-        "AI validation chunk " +
-          (nextAiQueue.currentChunkIndex || 1) +
-          "/" +
-          (nextAiQueue.totalChunks || 1) +
-          " running."
+        COPY_TEXT.activity.aiChunkRunning(
+          nextAiQueue.currentChunkIndex || 1,
+          nextAiQueue.totalChunks || 1
+        )
       );
     }
 
@@ -678,11 +711,10 @@ import {
         nextAiQueue.retryAfterUntil !== uiState.aiQueue.retryAfterUntil)
     ) {
       pushActivity(
-        "AI validation backing off before retrying chunk " +
-          (nextAiQueue.currentChunkIndex || 1) +
-          "/" +
-          (nextAiQueue.totalChunks || 1) +
-          "."
+        COPY_TEXT.activity.aiChunkBackingOff(
+          nextAiQueue.currentChunkIndex || 1,
+          nextAiQueue.totalChunks || 1
+        )
       );
     }
 
@@ -691,7 +723,7 @@ import {
       nextAiQueue.lastError &&
       nextAiQueue.lastError !== uiState.aiQueue.lastError
     ) {
-      pushActivity("AI config error: " + nextAiQueue.lastError);
+      pushActivity(COPY_TEXT.activity.aiConfigError(nextAiQueue.lastError));
     }
 
     if (
@@ -699,31 +731,23 @@ import {
       uiState.aiQueue.phase !== AI_QUEUE_PHASES.completed &&
       (nextAiCounts.pending || 0) === 0
     ) {
-      pushActivity(
-        "AI validation completed. interested: " +
-          (nextAiCounts.interested || 0) +
-          ", not_interested: " +
-          (nextAiCounts.not_interested || 0) +
-          ", unknown: " +
-          (nextAiCounts.unknown || 0) +
-          "."
-      );
+      pushActivity(COPY_TEXT.activity.aiCompleted(nextAiCounts));
     }
 
     if ((nextAiCounts.interested || 0) > (uiState.aiCounts.interested || 0)) {
-      pushActivity("AI marked 1 post as interested.");
+      pushActivity(COPY_TEXT.activity.aiMarkedInterested);
     }
 
     if ((nextAiCounts.not_interested || 0) > (uiState.aiCounts.not_interested || 0)) {
-      pushActivity("AI marked 1 post as not_interested.");
+      pushActivity(COPY_TEXT.activity.aiMarkedNotInterested);
     }
 
     if ((nextAiCounts.unknown || 0) > (uiState.aiCounts.unknown || 0)) {
-      pushActivity("AI marked a chunk as unknown after retries.");
+      pushActivity(COPY_TEXT.activity.aiMarkedUnknown);
     }
 
     if ((nextAiCounts.unresolved || 0) > (uiState.aiCounts.unresolved || 0)) {
-      pushActivity("AI left a chunk unresolved after provider overload. Retry later.");
+      pushActivity(COPY_TEXT.activity.aiMarkedUnresolved);
     }
   }
 
@@ -3004,7 +3028,7 @@ import {
     }
 
     panel.fullRunButton.disabled = true;
-    pushActivity("Run Full requested.");
+    pushActivity(COPY_TEXT.activity.runFullRequested);
     renderPanel();
 
     try {
@@ -3014,10 +3038,10 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to start Run Full.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToStartCrawler);
       }
 
-      pushActivity("Run Full started.");
+      pushActivity(COPY_TEXT.activity.runFullStarted);
     } catch (error) {
       pushActivity(error.message);
     } finally {
@@ -3031,7 +3055,7 @@ import {
     }
 
     panel.downloadResultButton.disabled = true;
-    pushActivity("Result download requested.");
+    pushActivity(COPY_TEXT.activity.resultDownloadRequested);
     renderPanel();
 
     try {
@@ -3040,10 +3064,10 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to download result.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToDownloadResult);
       }
 
-      pushActivity("Downloaded " + response.filename);
+      pushActivity(COPY_TEXT.activity.resultDownloaded(response.filename));
     } catch (error) {
       pushActivity(error.message);
     } finally {
@@ -3057,7 +3081,7 @@ import {
     }
 
     panel.enrichmentRunButton.disabled = true;
-    pushActivity("Enrichment requested.");
+    pushActivity(COPY_TEXT.activity.enrichmentRequested);
     renderPanel();
 
     try {
@@ -3066,10 +3090,10 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to start enrichment.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToStartEnrichment);
       }
 
-      pushActivity("Enrichment started.");
+      pushActivity(COPY_TEXT.activity.enrichmentStarted);
     } catch (error) {
       pushActivity(error.message);
     } finally {
@@ -3083,7 +3107,7 @@ import {
     }
 
     panel.enrichmentCancelButton.disabled = true;
-    pushActivity("Enrichment cancellation requested.");
+    pushActivity(COPY_TEXT.activity.enrichmentCancelled);
     renderPanel();
 
     try {
@@ -3092,7 +3116,7 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to cancel enrichment.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToCancelEnrichment);
       }
     } catch (error) {
       pushActivity(error.message);
@@ -3107,7 +3131,7 @@ import {
     }
 
     panel.aiRunButton.disabled = true;
-    pushActivity("AI validation requested.");
+    pushActivity(COPY_TEXT.activity.aiValidationRequested);
     renderPanel();
 
     try {
@@ -3116,10 +3140,10 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to start AI validation.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToStartAiValidation);
       }
 
-      pushActivity("AI validation started.");
+      pushActivity(COPY_TEXT.activity.aiValidationStarted);
     } catch (error) {
       pushActivity(error.message);
     } finally {
@@ -3133,7 +3157,7 @@ import {
     }
 
     panel.aiCancelButton.disabled = true;
-    pushActivity("AI validation cancellation requested.");
+    pushActivity(COPY_TEXT.activity.aiValidationCancelled);
     renderPanel();
 
     try {
@@ -3142,7 +3166,7 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to cancel AI validation.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToCancelAiValidation);
       }
     } catch (error) {
       pushActivity(error.message);
@@ -3163,12 +3187,12 @@ import {
     });
 
     if (!response?.ok) {
-      pushActivity(response?.error || "Failed to update target.");
+      pushActivity(response?.error || COPY_TEXT.errors.failedToUpdateTarget);
       renderPanel();
       return;
     }
 
-    pushActivity(options?.logMessage || "Target updated to " + response.state.targetCount + ".");
+    pushActivity(options?.logMessage || COPY_TEXT.activity.targetUpdated(response.state.targetCount));
     renderPanel();
   }
 
@@ -3182,7 +3206,7 @@ import {
       return;
     }
 
-    pushActivity("Start requested.");
+    pushActivity(COPY_TEXT.activity.startRequested);
     renderPanel();
 
     const response = await safeSendMessage({
@@ -3191,12 +3215,12 @@ import {
     });
 
     if (!response?.ok) {
-      pushActivity(response?.error || "Failed to start crawler.");
+      pushActivity(response?.error || COPY_TEXT.errors.failedToStartCrawler);
       renderPanel();
       return;
     }
 
-    pushActivity("Crawler started.");
+    pushActivity(COPY_TEXT.activity.crawlerStarted);
     renderPanel();
   }
 
@@ -3206,7 +3230,7 @@ import {
     }
 
     panel.startButton.disabled = true;
-    pushActivity("Run Full resume requested.");
+    pushActivity(COPY_TEXT.activity.runFullResumeRequested);
     renderPanel();
 
     try {
@@ -3216,10 +3240,10 @@ import {
       });
 
       if (!response?.ok) {
-        throw new Error(response?.error || "Failed to resume Run Full.");
+        throw new Error(response?.error || COPY_TEXT.errors.failedToResumeFullRun);
       }
 
-      pushActivity("Run Full resumed.");
+      pushActivity(COPY_TEXT.activity.runFullResumed);
     } catch (error) {
       pushActivity(error.message);
     } finally {
@@ -3232,7 +3256,7 @@ import {
       return;
     }
 
-    pushActivity("Stop requested.");
+    pushActivity(COPY_TEXT.activity.stopRequested);
     renderPanel();
 
     const response = await safeSendMessage({
@@ -3240,12 +3264,12 @@ import {
     });
 
     if (!response?.ok) {
-      pushActivity(response?.error || "Failed to stop crawler.");
+      pushActivity(response?.error || COPY_TEXT.errors.failedToStopCrawler);
       renderPanel();
       return;
     }
 
-    pushActivity("Crawler stop requested.");
+    pushActivity(COPY_TEXT.activity.crawlerStopRequested);
     renderPanel();
   }
 

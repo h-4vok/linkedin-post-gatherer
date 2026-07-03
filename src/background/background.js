@@ -11,6 +11,7 @@ import {
   STALLED_WAIT_LIMIT,
   STORAGE_KEYS,
 } from "../shared/constants.js";
+import { COPY_TEXT } from "../shared/messages.js";
 import {
   buildAuthorCacheKey,
   buildAuthorSignalPatch,
@@ -275,9 +276,9 @@ async function handleMessage(message, sender) {
           retryAfterUntil: null,
           lastError: null,
           activeChunkFingerprints: [],
-          lastMessage: "AI validation cancellation requested.",
+          lastMessage: COPY_TEXT.ai.cancellationRequested,
         });
-        await broadcastAiActivity(tabId, "AI validation cancellation requested.");
+        await broadcastAiActivity(tabId, COPY_TEXT.ai.cancellationRequested);
         await broadcastCountUpdated(tabId, state);
         return { ok: true, state };
       }
@@ -288,9 +289,9 @@ async function handleMessage(message, sender) {
         retryAfterUntil: null,
         lastError: null,
         activeChunkFingerprints: [],
-        lastMessage: "AI validation cancellation requested.",
+        lastMessage: COPY_TEXT.ai.cancellationRequested,
       });
-      await broadcastAiActivity(tabId, "AI validation cancellation requested.");
+      await broadcastAiActivity(tabId, COPY_TEXT.ai.cancellationRequested);
       await broadcastCountUpdated(tabId, state);
       return { ok: true, state };
     }
@@ -694,7 +695,7 @@ async function startEnrichmentForTab(tabId) {
   const startedState = await startEnrichment(tabId, {
     totalPosts: state.items.length,
     totalAuthors: countDistinctAuthors(state.items),
-    lastMessage: "Starting author enrichment.",
+    lastMessage: COPY_TEXT.enrichment.starting,
   });
   await broadcastCountUpdated(tabId, startedState);
   void runEnrichment(tabId);
@@ -731,7 +732,7 @@ async function startAiValidationForTab(tabId) {
       phase: AI_QUEUE_PHASES.configError,
       retryAfterUntil: null,
       lastError: configError,
-      lastMessage: "AI configuration needs attention.",
+      lastMessage: COPY_TEXT.ai.configNeedsAttention,
     });
     await broadcastCountUpdated(tabId, queueState);
     return { ok: false, error: configError, aiQueue: queueState.aiQueue };
@@ -757,11 +758,11 @@ async function startAiValidationForTab(tabId) {
     completedChunks: 0,
     currentChunkIndex: 1,
     activeChunkFingerprints: [],
-    lastMessage: "Starting AI validation bulk run.",
+    lastMessage: COPY_TEXT.ai.startingBulkRun,
   });
   await broadcastAiActivity(
     tabId,
-    `AI validation started for ${eligibleItems.length} posts in ${totalChunks} chunks.`
+    COPY_TEXT.ai.validationStarted(eligibleItems.length, totalChunks)
   );
   await broadcastCountUpdated(tabId, startedState);
   void ensureAiValidationRun(tabId);
@@ -799,8 +800,8 @@ async function startFullRun(tabId, { targetCount, resume = false } = {}) {
     stage: startStage,
     startedAt,
     lastMessage: resume
-      ? `Run Full resumed from ${formatFullRunStage(startStage)}.`
-      : "Run Full started.",
+      ? COPY_TEXT.fullRun.resumedFrom(formatFullRunStage(startStage))
+      : COPY_TEXT.fullRun.started,
   });
   await broadcastCountUpdated(tabId, runningState);
 
@@ -857,9 +858,9 @@ async function runFullSequence(tabId, run, { startStage, targetCount } = {}) {
     const completedState = await setFullRunState(tabId, {
       status: FULL_RUN_STATES.completed,
       stage: FULL_RUN_STAGES.ai,
-      lastMessage: "Run Full completed. AI validation is complete.",
+      lastMessage: COPY_TEXT.fullRun.completed,
     });
-    await broadcastAiActivity(tabId, "Run Full completed. AI validation is complete.");
+    await broadcastAiActivity(tabId, COPY_TEXT.fullRun.completed);
     await broadcastCountUpdated(tabId, completedState);
     logServiceWorkerEvent("full-run-completed", { tabId });
   } catch (error) {
@@ -871,13 +872,13 @@ async function runFullCrawlerStage(tabId, run, targetCount) {
   const stageState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.running,
     stage: FULL_RUN_STAGES.crawl,
-    lastMessage: "Run Full running Start.",
+    lastMessage: COPY_TEXT.fullRun.runningStart,
   });
   await broadcastCountUpdated(tabId, stageState);
 
   const startResponse = await startCrawlerForTab(tabId, targetCount);
   if (!startResponse?.ok) {
-    await failFullRun(tabId, startResponse?.error || "Run Full could not start crawling.");
+    await failFullRun(tabId, startResponse?.error || COPY_TEXT.fullRun.failedToStartCrawler);
     return false;
   }
 
@@ -898,19 +899,19 @@ async function runFullCrawlerStage(tabId, run, targetCount) {
   }
 
   if (!crawlerState.count) {
-    await failFullRun(tabId, "Run Full stopped because Start captured 0 posts.");
+    await failFullRun(tabId, COPY_TEXT.fullRun.stoppedBecauseZeroPosts);
     return false;
   }
 
   if (crawlerState.runState === RUN_STATES.unavailable) {
-    await failFullRun(tabId, "Run Full stopped because the LinkedIn feed is unavailable.");
+    await failFullRun(tabId, COPY_TEXT.fullRun.stoppedBecauseFeedUnavailable);
     return false;
   }
 
   const completedState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.running,
     stage: FULL_RUN_STAGES.enrichment,
-    lastMessage: `Start completed with ${crawlerState.count} posts. Run Full starting enrichment.`,
+    lastMessage: COPY_TEXT.fullRun.startedWithPosts(crawlerState.count),
   });
   await broadcastCountUpdated(tabId, completedState);
   return true;
@@ -920,13 +921,13 @@ async function runFullEnrichmentStage(tabId, run) {
   const stageState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.running,
     stage: FULL_RUN_STAGES.enrichment,
-    lastMessage: "Run Full running enrichment.",
+    lastMessage: COPY_TEXT.fullRun.runningEnrichment,
   });
   await broadcastCountUpdated(tabId, stageState);
 
   const enrichmentResponse = await startEnrichmentForTab(tabId);
   if (!enrichmentResponse?.ok) {
-    await failFullRun(tabId, enrichmentResponse?.error || "Run Full could not start enrichment.");
+    await failFullRun(tabId, enrichmentResponse?.error || COPY_TEXT.fullRun.failedToStartEnrichment);
     return false;
   }
 
@@ -953,7 +954,7 @@ async function runFullEnrichmentStage(tabId, run) {
   if (enrichmentState.enrichment?.status !== ENRICHMENT_STATES.completed) {
     await failFullRun(
       tabId,
-      enrichmentState.enrichment?.lastMessage || "Run Full stopped because enrichment failed."
+      enrichmentState.enrichment?.lastMessage || COPY_TEXT.fullRun.stoppedBecauseEnrichmentFailed
     );
     return false;
   }
@@ -961,7 +962,7 @@ async function runFullEnrichmentStage(tabId, run) {
   const completedState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.running,
     stage: FULL_RUN_STAGES.ai,
-    lastMessage: "Enrichment completed. Run Full starting AI validation.",
+    lastMessage: COPY_TEXT.enrichment.completionForRunFull,
   });
   await broadcastCountUpdated(tabId, completedState);
   return true;
@@ -971,13 +972,13 @@ async function runFullAiStage(tabId, run) {
   const stageState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.running,
     stage: FULL_RUN_STAGES.ai,
-    lastMessage: "Run Full running AI validation.",
+    lastMessage: COPY_TEXT.fullRun.runningAiValidation,
   });
   await broadcastCountUpdated(tabId, stageState);
 
   const aiResponse = await startAiValidationForTab(tabId);
   if (!aiResponse?.ok) {
-    await failFullRun(tabId, aiResponse?.error || "Run Full could not start AI validation.");
+    await failFullRun(tabId, aiResponse?.error || COPY_TEXT.fullRun.failedToStartAiValidation);
     return false;
   }
 
@@ -1002,7 +1003,7 @@ async function runFullAiStage(tabId, run) {
       tabId,
       aiState.aiQueue?.lastError ||
         aiState.aiQueue?.lastMessage ||
-        "Run Full stopped because AI validation failed."
+        COPY_TEXT.fullRun.stoppedBecauseAiValidationFailed
     );
     return false;
   }
@@ -1044,7 +1045,7 @@ async function stopFullRun(tabId) {
     if (activeEnrichment) {
       activeEnrichment.cancelled = true;
     }
-    state = await cancelEnrichment(tabId, "Run Full stop requested during enrichment.");
+    state = await cancelEnrichment(tabId, COPY_TEXT.fullRun.stopRequestedDuringEnrichment);
   }
 
   if (isAiValidationRunning(state)) {
@@ -1058,14 +1059,14 @@ async function stopFullRun(tabId) {
       retryAfterUntil: null,
       lastError: null,
       activeChunkFingerprints: [],
-      lastMessage: "Run Full stop requested during AI validation.",
+      lastMessage: COPY_TEXT.fullRun.stopRequestedDuringAiValidation,
     });
   }
 
   const stoppedState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.stopped,
     stage,
-    lastMessage: `Run Full stopped during ${formatFullRunStage(stage)}. Press Resume to continue.`,
+    lastMessage: COPY_TEXT.fullRun.stoppedDuring(formatFullRunStage(stage)),
   });
   await broadcastAiActivity(tabId, stoppedState.fullRun.lastMessage);
   await broadcastCountUpdated(tabId, stoppedState);
@@ -1076,7 +1077,7 @@ async function stopFullRun(tabId) {
 async function failFullRun(tabId, message) {
   const failedState = await setFullRunState(tabId, {
     status: FULL_RUN_STATES.failed,
-    lastMessage: message || "Run Full failed.",
+    lastMessage: message || COPY_TEXT.fullRun.failed,
   });
   await broadcastAiActivity(tabId, failedState.fullRun.lastMessage);
   await broadcastCountUpdated(tabId, failedState);
@@ -1189,9 +1190,9 @@ async function runAiValidation(tabId, run) {
         retryAfterUntil: null,
         lastError: null,
         activeChunkFingerprints: [],
-        lastMessage: "AI validation cancelled.",
+        lastMessage: COPY_TEXT.ai.cancellationRequested,
       });
-      await broadcastAiActivity(tabId, "AI validation cancelled.");
+      await broadcastAiActivity(tabId, COPY_TEXT.ai.cancellationRequested);
       await broadcastCountUpdated(tabId, cancelledState);
       return;
     }
@@ -1219,11 +1220,11 @@ async function runAiValidation(tabId, run) {
         lastError: null,
         currentChunkIndex: 0,
         activeChunkFingerprints: [],
-        lastMessage: "AI validation completed for the current batch.",
+        lastMessage: COPY_TEXT.ai.validationCompleted,
       });
       await broadcastAiActivity(
         tabId,
-        `AI validation completed. interested: ${completedState.aiCounts.interested}, not_interested: ${completedState.aiCounts.not_interested}, unknown: ${completedState.aiCounts.unknown}.`
+        COPY_TEXT.activity.aiCompleted(completedState.aiCounts)
       );
       await broadcastCountUpdated(tabId, completedState);
       return;
@@ -1237,7 +1238,7 @@ async function runAiValidation(tabId, run) {
         phase: AI_QUEUE_PHASES.configError,
         retryAfterUntil: null,
         lastError: configError,
-        lastMessage: "AI configuration needs attention.",
+        lastMessage: COPY_TEXT.ai.configNeedsAttention,
       });
       await broadcastCountUpdated(tabId, queueState);
       return;
@@ -1269,12 +1270,15 @@ async function runAiValidation(tabId, run) {
       lastRequestAt: new Date().toISOString(),
       currentChunkIndex,
       activeChunkFingerprints: chunk.map((item) => item.fingerprint),
-      lastMessage: `Running AI validation chunk ${currentChunkIndex}/${stateBeforeChunk.aiQueue?.totalChunks || 1}.`,
+      lastMessage: COPY_TEXT.ai.chunkRunning(
+        currentChunkIndex,
+        stateBeforeChunk.aiQueue?.totalChunks || 1
+      ),
     });
     await broadcastCountUpdated(tabId, processingState);
     await broadcastAiActivity(
       tabId,
-      `AI validation chunk ${currentChunkIndex}/${processingState.aiQueue.totalChunks} running for ${chunk.length} posts.`
+      COPY_TEXT.activity.aiChunkRunning(currentChunkIndex, processingState.aiQueue.totalChunks)
     );
 
     const attempts =
@@ -1316,7 +1320,7 @@ async function runAiValidation(tabId, run) {
           (updatedState.aiQueue.completedChunks || 0) + 2
         ),
         activeChunkFingerprints: [],
-        lastMessage: `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} completed.`,
+        lastMessage: COPY_TEXT.ai.chunkCompleted(currentChunkIndex, updatedState.aiQueue.totalChunks),
       });
       const interestedCount = chunk.filter((item) => interestedIds.has(item.fingerprint)).length;
       logServiceWorkerEvent("ai-validation-chunk-completed", {
@@ -1367,8 +1371,8 @@ async function runAiValidation(tabId, run) {
           ),
           activeChunkFingerprints: [],
           lastMessage: retryableError
-            ? `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} unresolved after provider overload. Retry later.`
-            : `Chunk ${currentChunkIndex}/${updatedState.aiQueue.totalChunks} failed and was marked unknown.`,
+            ? COPY_TEXT.ai.chunkFailedUnresolved
+            : COPY_TEXT.ai.chunkFailedUnknown,
         });
         logServiceWorkerEvent("ai-validation-chunk-failed", {
           tabId,
@@ -1378,8 +1382,8 @@ async function runAiValidation(tabId, run) {
           message: normalizedError.message,
         });
         const failedMessage = retryableError
-          ? `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} unresolved after provider overload. Retry later.`
-          : `AI validation chunk ${currentChunkIndex}/${failedState.aiQueue.totalChunks} failed. ${chunk.length} posts marked unknown.`;
+          ? COPY_TEXT.ai.chunkFailedUnresolved
+          : COPY_TEXT.activity.aiMarkedUnknown;
         await broadcastAiActivity(tabId, failedMessage);
         await broadcastCountUpdated(tabId, failedState);
         return;
@@ -1403,7 +1407,7 @@ async function runAiValidation(tabId, run) {
         lastError: normalizedError.message,
         currentChunkIndex,
         activeChunkFingerprints: chunk.map((item) => item.fingerprint),
-        lastMessage: `Backing off before retrying chunk ${currentChunkIndex}.`,
+        lastMessage: COPY_TEXT.ai.chunkBackingOff(currentChunkIndex),
       });
       logServiceWorkerEvent("ai-validation-chunk-backoff", {
         tabId,
@@ -1416,7 +1420,7 @@ async function runAiValidation(tabId, run) {
       });
       await broadcastAiActivity(
         tabId,
-        `AI validation chunk ${currentChunkIndex}/${queueState.aiQueue.totalChunks} waiting ${Math.ceil(retryDelayMs / 1000)}s before retry due to provider overload.`
+        COPY_TEXT.ai.chunkWaitRetry(Math.ceil(retryDelayMs / 1000))
       );
       await broadcastCountUpdated(tabId, queueState);
       await scheduleValidationRetryAlarm(tabId, retryDelayMs);
@@ -1462,7 +1466,7 @@ async function runEnrichment(tabId) {
 
     for (const bucket of authorBuckets) {
       if (run.cancelled) {
-        const cancelledState = await cancelEnrichment(tabId, "Enrichment cancelled.");
+        const cancelledState = await cancelEnrichment(tabId, COPY_TEXT.enrichment.cancelled);
         await broadcastCountUpdated(tabId, cancelledState);
         return;
       }
@@ -1471,7 +1475,7 @@ async function runEnrichment(tabId) {
       let progressState = await updateEnrichmentProgress(tabId, {
         currentAuthor: bucket.author,
         currentPostIndex: nextPostIndex,
-        lastMessage: `Resolving ${bucket.author}.`,
+        lastMessage: COPY_TEXT.enrichment.resolvingAuthor(bucket.author),
       });
       await broadcastCountUpdated(tabId, progressState);
 
@@ -1504,7 +1508,7 @@ async function runEnrichment(tabId) {
     );
     await broadcastCountUpdated(tabId, completedState);
   } catch (error) {
-    const failedState = await failEnrichment(tabId, error.message || "Enrichment failed.");
+    const failedState = await failEnrichment(tabId, error.message || COPY_TEXT.enrichment.failed);
     await broadcastCountUpdated(tabId, failedState);
     logServiceWorkerEvent("enrichment-failed", {
       tabId,

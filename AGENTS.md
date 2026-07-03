@@ -27,3 +27,4 @@ Then use existing repo docs as needed:
 - Treat `DELIVERY_CHECKLIST.md` as the minimum close-out checklist before declaring work complete.
 - Treat `REPO_BASELINE.md` as the standard setup and tooling reference for new or normalized repos.
 - Keep docs and diagrams aligned with code changes in the same change set.
+- Keep `src/content/linkedin/` runtime self-contained: do not let injected page scripts depend on shared chunks or imports that force them to behave like ES modules.

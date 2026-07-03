@@ -1,4 +1,5 @@
 import { AI_DEFAULT_CONFIG, MESSAGE_TYPES } from "../../shared/constants.js";
+import { COPY_TEXT } from "../../shared/messages.js";
 import "./style.css";
 
 const aiEnabledInput = document.querySelector("#ai-enabled");
@@ -29,8 +30,8 @@ void hydratePopup();
 
 saveAiConfigButton?.addEventListener("click", async () => {
   await saveAiConfig({
-    feedbackText: "Saving AI config...",
-    successText: "AI config saved.",
+    feedbackText: COPY_TEXT.popup.savingAiConfig,
+    successText: COPY_TEXT.popup.aiConfigSaved,
     button: saveAiConfigButton,
   });
 });
@@ -38,8 +39,8 @@ saveAiConfigButton?.addEventListener("click", async () => {
 resetAiPromptButton?.addEventListener("click", async () => {
   aiSystemInstructionInput.value = AI_DEFAULT_CONFIG.systemInstruction;
   await saveAiConfig({
-    feedbackText: "Resetting prompt...",
-    successText: "Prompt reset to the current default.",
+    feedbackText: COPY_TEXT.popup.resettingPrompt,
+    successText: COPY_TEXT.popup.promptReset,
     button: resetAiPromptButton,
   });
 });
@@ -61,7 +62,7 @@ async function saveAiConfig({ feedbackText, successText, button }) {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Failed to save AI config");
+      throw new Error(response?.error || COPY_TEXT.errors.failedToSaveAiConfig);
     }
 
     renderAiConfig(response.config);
@@ -77,12 +78,12 @@ async function saveAiConfig({ feedbackText, successText, button }) {
 
 resetDebugButton?.addEventListener("click", async () => {
   if (activeTabId == null || !isLinkedInTab(activeTabUrl)) {
-    popupFeedback.textContent = "Open a LinkedIn feed tab before resetting debug data.";
+    popupFeedback.textContent = COPY_TEXT.popup.openLinkedInTabReset;
     return;
   }
 
   resetDebugButton.disabled = true;
-  popupFeedback.textContent = "Resetting current tab data...";
+  popupFeedback.textContent = COPY_TEXT.popup.resettingCurrentTab;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -91,11 +92,11 @@ resetDebugButton?.addEventListener("click", async () => {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Failed to reset current tab data");
+      throw new Error(response?.error || COPY_TEXT.errors.failedToResetDebug);
     }
 
     popupFeedback.textContent =
-      "Current tab data cleared. The LinkedIn panel can scan the same feed again.";
+      COPY_TEXT.popup.currentTabCleared;
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {
@@ -206,12 +207,12 @@ function renderDebugToolState() {
 
 async function openFeedDumpPreview() {
   if (activeTabId == null || !isLinkedInTab(activeTabUrl)) {
-    popupFeedback.textContent = "Open a LinkedIn feed tab before capturing a dump.";
+    popupFeedback.textContent = COPY_TEXT.popup.openLinkedInTabDump;
     return;
   }
 
   captureFeedDumpButton.disabled = true;
-  popupFeedback.textContent = "Capturing feed DOM dump...";
+  popupFeedback.textContent = COPY_TEXT.popup.capturingFeedDump;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -220,7 +221,7 @@ async function openFeedDumpPreview() {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Failed to capture feed dump");
+      throw new Error(response?.error || COPY_TEXT.errors.failedToCaptureFeedDump);
     }
 
     const json = JSON.stringify(response.dump, null, 2);
@@ -232,7 +233,7 @@ async function openFeedDumpPreview() {
         : `Captured ${response.dump?.posts?.length || 0} post samples.`,
       text: json,
     });
-    popupFeedback.textContent = "Feed dump captured.";
+    popupFeedback.textContent = COPY_TEXT.popup.feedDumpCaptured;
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {
@@ -242,12 +243,14 @@ async function openFeedDumpPreview() {
 
 async function openExportPreview(mode) {
   if (activeTabId == null) {
-    popupFeedback.textContent = "Open a tab with collected data before previewing JSON.";
+    popupFeedback.textContent = COPY_TEXT.popup.openCollectedDataPreview;
     return;
   }
 
   popupFeedback.textContent =
-    mode === "enriched" ? "Preparing enriched JSON preview..." : "Preparing raw JSON preview...";
+    mode === "enriched"
+      ? COPY_TEXT.popup.preparingEnrichedPreview
+      : COPY_TEXT.popup.preparingRawPreview;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -257,7 +260,7 @@ async function openExportPreview(mode) {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Failed to build preview");
+      throw new Error(response?.error || COPY_TEXT.errors.failedToBuildPreview);
     }
 
     openPreviewModal({
@@ -266,7 +269,7 @@ async function openExportPreview(mode) {
       meta: `${response.count || 0} items ready for preview.`,
       text: response.json,
     });
-    popupFeedback.textContent = "JSON preview ready.";
+    popupFeedback.textContent = COPY_TEXT.popup.previewReady;
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {
@@ -276,11 +279,11 @@ async function openExportPreview(mode) {
 
 async function openIgnoredPreview() {
   if (activeTabId == null) {
-    popupFeedback.textContent = "Open a tab with collected data before previewing ignored posts.";
+    popupFeedback.textContent = COPY_TEXT.popup.openCollectedDataIgnored;
     return;
   }
 
-  popupFeedback.textContent = "Preparing ignored-posts JSON preview...";
+  popupFeedback.textContent = COPY_TEXT.popup.preparingIgnoredPreview;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -289,7 +292,7 @@ async function openIgnoredPreview() {
     });
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Failed to build ignored-posts preview");
+      throw new Error(response?.error || COPY_TEXT.errors.failedToBuildIgnoredPreview);
     }
 
     openPreviewModal({
@@ -298,7 +301,7 @@ async function openIgnoredPreview() {
       meta: `${response.count || 0} discarded samples ready for inspection.`,
       text: response.json,
     });
-    popupFeedback.textContent = "Ignored-posts preview ready.";
+    popupFeedback.textContent = COPY_TEXT.popup.ignoredPreviewReady;
   } catch (error) {
     popupFeedback.textContent = error.message;
   } finally {
@@ -330,17 +333,17 @@ async function copyPreviewText() {
   const text = previewOutput.value || "";
 
   if (!text) {
-    popupFeedback.textContent = "Nothing to copy.";
+    popupFeedback.textContent = COPY_TEXT.popup.nothingToCopy;
     return;
   }
 
   try {
     await navigator.clipboard.writeText(text);
-    popupFeedback.textContent = "Preview copied to clipboard.";
+    popupFeedback.textContent = COPY_TEXT.popup.copied;
   } catch {
     previewOutput.focus();
     previewOutput.select();
-    popupFeedback.textContent = "Copy failed. Use manual copy from the preview.";
+    popupFeedback.textContent = COPY_TEXT.popup.copyFailed;
   }
 }
 

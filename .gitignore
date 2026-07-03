@@ -38,6 +38,9 @@ pnpm-debug.log*
 .cache/
 .eslintcache
 .stylelintcache
+.pw-profile/
+.pw-edge-profile/
+.pw-edge-profile-2/
 *.tmp
 *.temp
 tmp/

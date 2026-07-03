@@ -6,9 +6,9 @@ import {
   FULL_RUN_STAGES,
   FULL_RUN_STATES,
   RUN_STATES,
-  STATUS_TEXT,
   TARGET_COUNT_DEFAULT,
 } from "./constants.js";
+import { COPY_TEXT, STATUS_TEXT } from "./messages.js";
 import {
   clampTargetCount,
   getFeedState,
@@ -465,7 +465,7 @@ export function completeEnrichment(tabId, enrichedItems, lastMessage) {
     processedAuthors: tabState.enrichment.totalAuthors,
     currentAuthor: null,
     currentPostIndex: tabState.enrichment.totalPosts,
-    lastMessage: lastMessage || "Enrichment completed.",
+    lastMessage: lastMessage || COPY_TEXT.enrichment.completed,
     readyForDownload: true,
   };
   return persistState(tabId);
@@ -477,7 +477,7 @@ export function failEnrichment(tabId, lastMessage) {
     ...tabState.enrichment,
     status: ENRICHMENT_STATES.failed,
     currentAuthor: null,
-    lastMessage: lastMessage || "Enrichment failed.",
+    lastMessage: lastMessage || COPY_TEXT.enrichment.failed,
     readyForDownload: false,
   };
   return persistState(tabId);
@@ -489,7 +489,7 @@ export function cancelEnrichment(tabId, lastMessage) {
     ...tabState.enrichment,
     status: ENRICHMENT_STATES.cancelled,
     currentAuthor: null,
-    lastMessage: lastMessage || "Enrichment cancelled.",
+    lastMessage: lastMessage || COPY_TEXT.enrichment.cancelled,
     readyForDownload: false,
   };
   return persistState(tabId);

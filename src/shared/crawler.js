@@ -3,11 +3,11 @@ import {
   NO_PROGRESS_LIMIT,
   RUN_STATES,
   STALLED_WAIT_LIMIT,
-  STATUS_TEXT,
   TARGET_COUNT_DEFAULT,
   TARGET_COUNT_MAX,
   TARGET_COUNT_MIN,
 } from "./constants.js";
+import { STATUS_TEXT } from "./messages.js";
 
 export function clampTargetCount(value) {
   const parsed = Number.parseInt(value, 10);
