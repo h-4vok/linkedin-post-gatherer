@@ -41,7 +41,7 @@ export const AI_RATE_LIMIT = {
 export const AI_DEFAULT_CONFIG = {
   enabled: false,
   apiKey: "",
-  model: "gemini-2.5-flash",
+  model: "gemini-3.1-flash-lite",
   systemInstruction: DEFAULT_GEMINI_SYSTEM_INSTRUCTION,
 };
 
